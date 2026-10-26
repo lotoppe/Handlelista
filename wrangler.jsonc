@@ -1,0 +1,14 @@
+{
+  // Handlelista – felles handleliste med totalpris fra Kassalapp
+  "name": "handlelista",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "durable_objects": {
+    "bindings": [{ "name": "LIST", "class_name": "ListStore" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ListStore"] }]
+  // Hemmeligheter settes i Cloudflare (Settings → Variables and Secrets):
+  //   KASSAL_KEY    – API-nøkkel fra kassal.app/api
+  //   APP_PASSWORD  – koden dere skriver inn første gang appen åpnes
+}

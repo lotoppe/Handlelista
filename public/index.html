@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Handlelista">
+<meta name="theme-color" content="#f3f5f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121814" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6b3c'/%3E%3Cpath d='M18 33l9 9 19-20' stroke='white' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Handlelista</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f3f5f2; --surface:#ffffff; --ink:#1d2a22; --muted:#66746b; --line:#dde3dd;
+  --accent:#2f6b3c; --accent-ink:#ffffff; --chip:#e7eee7; --done:#a3ada6; --warn:#b4472f; --best:#e3f0e4;
+  --display:"Bricolage Grotesque","Avenir Next",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121814; --surface:#1a221d; --ink:#e6ece7; --muted:#93a198; --line:#2a352e;
+  --accent:#6fbf80; --accent-ink:#0e1a12; --chip:#233029; --done:#5d6a62; --warn:#e48a72; --best:#1f3324; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit}
+.wrap{max-width:560px;margin:0 auto;padding-block:20px 150px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margin:0;letter-spacing:-.01em}
+.count{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.status{font-size:.8rem;color:var(--muted);margin-top:4px}
+.status.err{color:var(--warn)}
+.label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+
+/* Totalpris */
+.totals{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.totals-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.primary{white-space:nowrap;border:0;background:var(--accent);color:var(--accent-ink);font-weight:600;border-radius:12px;padding:12px 16px;cursor:pointer}
+.primary:disabled{opacity:.6}
+.store-row{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 10px;border-radius:10px;align-items:baseline}
+.store-row.best{background:var(--best)}
+.store-row b{font-weight:600}
+.store-row .sum{font-family:var(--display);font-weight:600;font-size:1.15rem;font-variant-numeric:tabular-nums;text-align:right}
+.store-row small{grid-column:1/-1;color:var(--muted);font-size:.78rem}
+.note{font-size:.82rem;color:var(--muted);margin:0}
+.note button{border:0;background:none;color:var(--accent);font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
+
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:0;background:var(--chip);font-weight:500;font-size:.9rem;padding:8px 12px;border-radius:999px;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.section h2{font-family:var(--display);font-weight:600;font-size:1rem;margin:0 0 6px;display:flex;gap:8px;align-items:baseline}
+.section h2 span{font-family:var(--body);font-weight:500;font-size:.8rem;color:var(--muted)}
+.list{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.item{display:flex;align-items:center;gap:10px;padding:10px 6px 10px 12px;border-top:1px solid var(--line);min-height:54px}
+.list>li:first-child{border-top:0}
+.check{flex:none;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:transparent;cursor:pointer;display:grid;place-items:center;padding:0}
+.item.done .check{background:var(--accent);border-color:var(--accent)}
+.check svg{width:14px;height:14px;opacity:0;color:var(--accent-ink)}
+.item.done .check svg{opacity:1}
+.name{flex:1;min-width:0;cursor:pointer;overflow-wrap:anywhere}
+.name small{display:block;color:var(--muted);font-size:.78rem}
+.name small.link{color:var(--accent)}
+.item.done .name{color:var(--done);text-decoration:line-through}
+.acts{display:flex;gap:2px;flex:none;align-items:center}
+.icon{border:0;background:transparent;color:var(--muted);min-width:38px;height:38px;border-radius:8px;cursor:pointer;display:grid;place-items:center}
+.icon svg{width:18px;height:18px}
+.pill{font-weight:600;font-size:.78rem;color:var(--accent);border:1.5px solid currentColor;border-radius:999px;padding:2px 7px;line-height:1.2;white-space:nowrap}
+.pill.none{color:var(--muted);border-style:dashed}
+.edit{display:flex;gap:6px;flex-wrap:wrap;padding:2px 12px 12px;background:var(--surface)}
+.edit select,.edit input{font:500 .9rem var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 8px;min-width:0}
+.edit input{width:6rem}
+
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:22px 18px;display:flex;flex-direction:column;gap:10px}
+.empty p{margin:0;color:var(--muted)}
+.empty strong{font-family:var(--display);font-size:1.15rem}
+.footer-acts{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.textbtn{border:0;background:none;color:var(--accent);font-weight:600;font-size:.9rem;cursor:pointer;padding:6px 0}
+.textbtn.warn{color:var(--warn)}
+
+.addbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);z-index:5;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.addbar form{max-width:560px;margin:0 auto;display:flex;gap:8px}
+.addbar input,.sheet input[type=search],.login input{flex:1;min-width:0;font:500 1rem var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+
+/* Produktvelger */
+.scrim{position:fixed;inset:0;background:rgba(10,16,12,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--bg);width:100%;max-width:600px;max-height:88vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;
+  padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:12px}
+.sheet h3{font-family:var(--display);font-size:1.25rem;margin:0}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.results{overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:120px}
+.prod{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px;cursor:pointer;width:100%}
+.prod.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.prod img,.prod .ph{width:52px;height:52px;object-fit:contain;border-radius:8px;background:#fff}
+.prod .ph{background:var(--chip)}
+.prod span{min-width:0}
+.prod b{display:block;font-weight:600;font-size:.92rem;overflow-wrap:anywhere}
+.prod small{color:var(--muted);font-size:.78rem}
+.prod .p{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+
+.login{max-width:360px;margin:18vh auto 0;display:flex;flex-direction:column;gap:12px}
+.login p{color:var(--muted);margin:0}
+@media (prefers-reduced-motion:no-preference){.item{transition:background .15s}}
+</style>
+</head>
+<body>
+
+<div class="login" id="login" hidden>
+  <h1>Handlelista</h1>
+  <p>Skriv inn koden dere har valgt. Den huskes på denne mobilen.</p>
+  <form id="loginForm" style="display:flex;gap:8px">
+    <input id="code" type="password" autocomplete="current-password" placeholder="Kode" aria-label="Kode">
+    <button class="primary" type="submit">Åpne</button>
+  </form>
+  <p class="status err" id="loginErr" hidden>Feil kode. Prøv igjen.</p>
+</div>
+
+<div id="app" hidden>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Handlelista</h1>
+      <div class="status" id="status">Henter lista…</div>
+    </div>
+    <div class="count" id="count"></div>
+  </header>
+
+  <section class="totals" id="totals" hidden>
+    <div class="totals-head">
+      <div>
+        <div class="label">Totalpris</div>
+        <div class="note" id="totalsSub">Sammenlign kjedene for det som står igjen på lista.</div>
+      </div>
+      <button class="primary" id="calcBtn" type="button">Hva koster lista?</button>
+    </div>
+    <div id="totalsBody"></div>
+  </section>
+
+  <section id="oftenWrap" hidden style="display:flex;flex-direction:column;gap:8px">
+    <div class="label">Pleier å kjøpe</div>
+    <div class="chips" id="often"></div>
+  </section>
+
+  <div id="sections"></div>
+
+  <div class="footer-acts" id="footerActs" hidden>
+    <button class="textbtn" id="clearDone" type="button">Fjern avhukede</button>
+    <button class="textbtn warn" id="clearAll" type="button">Tøm hele lista</button>
+  </div>
+</div>
+
+<div class="addbar">
+  <form id="addForm" autocomplete="off">
+    <input id="addInput" type="text" placeholder="Legg til, f.eks. «2 melk»" enterkeyhint="done" aria-label="Ny vare">
+    <button class="primary" type="submit">Legg til</button>
+  </form>
+</div>
+</div>
+
+<div class="scrim" id="picker" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+    <div class="sheet-head">
+      <h3 id="pickTitle">Velg produkt</h3>
+      <button class="textbtn" id="pickClose" type="button">Lukk</button>
+    </div>
+    <p class="note" id="pickHint">Velg varen du pleier å kjøpe. Appen husker valget neste gang.</p>
+    <input id="pickSearch" type="search" placeholder="Søk etter produkt" aria-label="Søk etter produkt" enterkeyhint="search">
+    <div class="results" id="pickResults"></div>
+    <button class="textbtn warn" id="pickUnlink" type="button" hidden>Fjern koblet produkt</button>
+  </div>
+</div>
+
+<script>
+const CATS = [
+  ["frukt","Frukt og grønt",["banan","eple","appelsin","sitron","lime","avokado","tomat","agurk","salat","løk","hvitløk","potet","gulrot","brokkoli","paprika","spinat","bær","druer","pære","kiwi","mango","sopp","squash","purre","ingefær","urter","basilikum","koriander","persille","blomkål","kål","mais","frukt","grønt","melon","ananas","rødløk","vårløk","søtpotet"]],
+  ["brod","Brød og bakst",["brød","rundstykke","lompe","tortilla","pita","knekkebrød","bagett","boller","polarbrød","wraps","croissant","kake"]],
+  ["kjott","Kjøtt, fisk og pålegg",["kjøtt","kylling","kyllingfilet","kjøttdeig","karbonade","laks","torsk","fisk","reker","bacon","pølse","skinke","salami","leverpostei","kalkun","biff","svin","lam","entrecote","fiskekaker","fiskeboller","makrell","sei","hamburger","nakke","ribbe","pinnekjøtt","kjøttkaker","servelat","pålegg"]],
+  ["meieri","Meieri og egg",["melk","lettmelk","helmelk","ost","smør","yoghurt","egg","fløte","rømme","kesam","cottage","skyr","brunost","mozzarella","parmesan","creme fraiche","crème fraîche","margarin","kremost","philadelphia","havremelk","matfløte","kulturmelk","biola","synnøve","norvegia"]],
+  ["torr","Tørrvarer og hermetikk",["pasta","spaghetti","ris","mel","sukker","salt","pepper","krydder","havregryn","müsli","musli","frokostblanding","olje","olivenolje","eddik","buljong","tacokrydder","tacosaus","hermetikk","bønner","linser","kikerter","hakkede tomater","tomatpuré","ketchup","sennep","majones","syltetøy","honning","nøtter","kaffe","te","kakao","sjokolade","nudler","soyasaus","saus","gryn","bakepulver","gjær","vaniljesukker","peanøttsmør","nugatti","makrell i tomat"]],
+  ["frys","Frysevarer",["frossen","frosne","fryse","iskrem","pizza","frosset","pommes","fiskepinner","grandiosa"]],
+  ["drikke","Drikke og snacks",["brus","cola","pepsi","vann","farris","juice","saft","øl","energidrikk","chips","snacks","godteri","smågodt","popcorn","kjeks","solo"]],
+  ["hus","Hus og hygiene",["dopapir","toalettpapir","tørkerull","kjøkkenrull","oppvask","zalo","vaskemiddel","såpe","sjampo","tannkrem","tannbørste","bleier","søppelsekk","poser","folie","plastfolie","bakepapir","batteri","deodorant","lyspære","servietter","oppvasktabletter","klut","svamp","bind","tamponger","plaster"]],
+  ["annet","Annet",[]]
+];
+const CAT_INDEX = Object.fromEntries(CATS.map((c,i)=>[c[0],i]));
+const CAT_NAME = Object.fromEntries(CATS.map(c=>[c[0],c[1]]));
+const ICON_CHECK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+const ICON_X = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg>';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const keyOf = n => String(n||"").toLowerCase().trim().replace(/[^a-z0-9æøå]+/g,"-").replace(/^-|-$/g,"").slice(0,80);
+const kr = n => n.toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2});
+const store = { get(k){ try{return localStorage.getItem(k)}catch(e){return null} }, set(k,v){ try{localStorage.setItem(k,v)}catch(e){} } };
+
+function guessCat(name){
+  const n = " "+name.toLowerCase()+" "; let best="annet", len=0;
+  for (const [k,,words] of CATS) for (const w of words) if (n.includes(w) && w.length>len){ best=k; len=w.length; }
+  return best;
+}
+function parseInput(raw){
+  let s = raw.trim().replace(/\s+/g," "), qty="";
+  const a = s.match(/^(\d+[.,]?\d*\s?(stk|pk|kg|g|l|dl|x)?)\s+(.+)$/i);
+  const b = !a && s.match(/^(.+?)\s+(\d+[.,]?\d*\s?(stk|pk|kg|g|l|dl|x)?)$/i);
+  if (a){ qty=a[1]; s=a[3]; } else if (b){ s=b[1]; qty=b[2]; }
+  return { name: s.charAt(0).toUpperCase()+s.slice(1), qty };
+}
+// Antall som brukes i totalpris: «3», «3 stk», «2x» → 3/2. Vekt og volum teller som 1.
+const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/i); return m ? Math.max(1, +m[1]) : 1; };
+
+// ---------- API ----------
+let code = store.get("hl-kode") || "";
+async function api(path, opts={}){
+  const r = await fetch(path, {...opts, headers:{"Content-Type":"application/json","x-kode":code}});
+  if (r.status === 401){ showLogin(true); throw {code:"login"}; }
+  const body = await r.json().catch(()=>({}));
+  if (!r.ok) throw {code: body.error || "feil", status:r.status};
+  return body;
+}
+
+let S = {v:-1, items:[], often:{}};
+let editing = null, prices = null, busy = 0;
+function setStatus(t, err){ const s=$("status"); s.textContent=t; s.classList.toggle("err",!!err); }
+
+async function pull(){
+  if (busy) return;
+  try{
+    const r = await api("/api/state?v="+S.v);
+    if (!r.same){ S = r; render(); }
+    setStatus("Delt lista · oppdateres automatisk");
+  }catch(e){ if (e.code!=="login") setStatus("Får ikke kontakt. Prøver igjen…", true); }
+}
+async function op(o, optimistic){
+  busy++;
+  if (optimistic){ optimistic(); render(); }
+  try{ S = await api("/api/op",{method:"POST",body:JSON.stringify(o)}); }
+  catch(e){ if (e.code!=="login") setStatus("Fikk ikke lagret. Sjekk nettet.", true); }
+  finally{ busy--; render(); }
+}
+
+// ---------- Render ----------
+function render(){
+  const items = S.items||[];
+  const open = items.filter(i=>!i.done);
+  $("count").textContent = items.length ? `${open.length} igjen av ${items.length}` : "";
+  $("footerActs").hidden = !items.length;
+  $("totals").hidden = !open.length;
+
+  const onList = new Set(open.map(i=>keyOf(i.name)));
+  const sugg = Object.entries(S.often||{}).filter(([k])=>!onList.has(k)).map(([,o])=>o)
+    .sort((a,b)=>(b.count-a.count)||((b.last||0)-(a.last||0))).slice(0,14);
+  $("oftenWrap").hidden = !sugg.length;
+  $("often").innerHTML = sugg.map(o=>`<button class="chip" type="button" data-add="${esc(o.name)}">+ ${esc(o.name)}</button>`).join("");
+
+  if (!items.length){
+    $("sections").innerHTML = `<div class="empty"><strong>Lista er tom</strong>
+      <p>Skriv en vare nederst. Den sorteres etter runden i butikken. Trykk på <span class="pill none">velg</span> for å koble varen til et produkt, så kan appen regne ut totalprisen.</p>
+      <div class="chips">${["Melk","Brød","Bananer","Egg","Kaffe"].map(n=>`<button class="chip" type="button" data-add="${n}">+ ${n}</button>`).join("")}</div></div>`;
+    renderTotals(); return;
+  }
+  const groups = {};
+  for (const it of items) (groups[it.cat] ||= []).push(it);
+  $("sections").innerHTML = Object.keys(groups).sort((a,b)=>(CAT_INDEX[a]??99)-(CAT_INDEX[b]??99)).map(cat=>{
+    const list = groups[cat].sort((a,b)=>(a.done-b.done)||(a.ts-b.ts));
+    const left = list.filter(i=>!i.done).length;
+    return `<section class="section"><h2>${esc(CAT_NAME[cat]||"Annet")}<span>${left||"ferdig"}</span></h2><ul class="list">${list.map(itemHTML).join("")}</ul></section>`;
+  }).join("");
+  renderTotals();
+}
+function cheapest(ean){
+  const p = prices?.byEan[ean]; if (!p || !p.stores.length) return null;
+  return p.stores.reduce((a,b)=>b.price<a.price?b:a);
+}
+function itemHTML(it){
+  let sub = it.qty ? esc(it.qty) : "";
+  if (it.ean){
+    const c = cheapest(it.ean);
+    const line = esc(it.pname) + (c ? ` · fra ${kr(c.price)} (${esc(c.name)})` : "");
+    sub = `<small class="link">${sub?sub+" · ":""}${line}</small>`;
+  } else if (sub) sub = `<small>${sub}</small>`;
+  return `<li class="item${it.done?" done":""}" data-id="${it.id}">
+    <button class="check" type="button" data-act="toggle" aria-label="${it.done?"Angre":"Huk av"} ${esc(it.name)}">${ICON_CHECK}</button>
+    <div class="name" data-act="edit">${esc(it.name)}${sub}</div>
+    <div class="acts">
+      <button class="icon" type="button" data-act="pick" aria-label="Velg produkt for ${esc(it.name)}"><span class="pill${it.ean?"":" none"}">${it.ean?"kr":"velg"}</span></button>
+      <button class="icon" type="button" data-act="del" aria-label="Fjern ${esc(it.name)}">${ICON_X}</button>
+    </div>
+  </li>${editing===it.id?`<li class="edit" data-id="${it.id}">
+    <select id="cat-${it.id}" data-act="cat" aria-label="Kategori">${CATS.map(c=>`<option value="${c[0]}"${c[0]===it.cat?" selected":""}>${c[1]}</option>`).join("")}</select>
+    <input id="qty-${it.id}" data-act="qty" value="${esc(it.qty)}" placeholder="Antall" aria-label="Antall">
+  </li>`:""}`;
+}
+
+// ---------- Totalpris ----------
+function renderTotals(){
+  const body = $("totalsBody");
+  const open = (S.items||[]).filter(i=>!i.done);
+  const unlinked = open.filter(i=>!i.ean);
+  const linked = open.filter(i=>i.ean);
+  const unlinkedNote = unlinked.length ? `<p class="note">${unlinked.length} ${unlinked.length===1?"vare":"varer"} uten valgt produkt er ikke med: ${unlinked.slice(0,4).map(i=>`<button type="button" data-pickid="${i.id}">${esc(i.name)}</button>`).join(", ")}${unlinked.length>4?" …":""}</p>` : "";
+  if (!prices){ body.innerHTML = unlinkedNote; return; }
+
+  const chains = {};
+  for (const it of linked){
+    const p = prices.byEan[it.ean]; if (!p) continue;
+    for (const s of p.stores){
+      const c = chains[s.code] ||= {name:s.name, sum:0, have:0};
+      c.sum += s.price * qtyN(it.qty); c.have++;
+    }
+  }
+  const total = linked.length;
+  const rows = Object.values(chains).sort((a,b)=>(b.have-a.have)||(a.sum-b.sum)).slice(0,8);
+  if (!rows.length){ body.innerHTML = `<p class="note">Fant ingen priser for de valgte produktene.</p>${unlinkedNote}`; return; }
+  const bestFull = rows.find(r=>r.have===total);
+  body.innerHTML = rows.map(r=>`<div class="store-row${r===bestFull?" best":""}">
+      <b>${esc(r.name)}</b><span class="sum">${kr(r.sum)} kr</span>
+      <small>${r.have===total?(r===bestFull?"Billigst for hele lista":"Har alle varene"):`Mangler pris på ${total-r.have} av ${total}`}</small>
+    </div>`).join("") + unlinkedNote +
+    `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.</p>`;
+}
+async function calc(){
+  const open = (S.items||[]).filter(i=>!i.done && i.ean);
+  if (!open.length){ prices = {byEan:{}}; renderTotals(); $("totalsBody").insertAdjacentHTML("afterbegin",'<p class="note">Velg produkt for minst én vare først.</p>'); return; }
+  const btn = $("calcBtn"); btn.disabled = true; btn.textContent = "Henter priser…";
+  try{
+    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({eans:open.map(i=>i.ean)})});
+    prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i]))};
+    render();
+  }catch(e){
+    const msg = {mangler_nokkel:"Kassalapp-nøkkelen er ikke satt opp ennå.",for_mange_kall:"For mange søk akkurat nå. Vent et minutt.",ugyldig_nokkel:"Kassalapp avviste nøkkelen. Sjekk at den er riktig."}[e.code] || "Fikk ikke hentet priser. Prøv igjen.";
+    $("totalsBody").innerHTML = `<p class="note" style="color:var(--warn)">${msg}</p>`;
+  }finally{ btn.disabled=false; btn.textContent="Oppdater pris"; }
+}
+
+// ---------- Produktvelger ----------
+let pickItem = null, searchT = null, searchSeq = 0;
+function openPicker(it){
+  pickItem = it;
+  $("pickTitle").textContent = it.name;
+  $("pickSearch").value = it.pname || it.name;
+  $("pickUnlink").hidden = !it.ean;
+  $("picker").hidden = false;
+  doSearch();
+}
+function closePicker(){ $("picker").hidden = true; pickItem = null; }
+async function doSearch(){
+  const q = $("pickSearch").value.trim(), seq = ++searchSeq, box = $("pickResults");
+  if (q.length < 3){ box.innerHTML = '<p class="note">Skriv minst tre bokstaver.</p>'; return; }
+  box.innerHTML = '<p class="note">Søker…</p>';
+  try{
+    const r = await api("/api/search?q="+encodeURIComponent(q));
+    if (seq !== searchSeq) return;
+    if (!r.results.length){ box.innerHTML = '<p class="note">Ingen treff. Prøv et kortere eller annet ord.</p>'; return; }
+    box.innerHTML = r.results.map((p,i)=>`<button class="prod${pickItem?.ean===p.ean?" sel":""}" type="button" data-i="${i}">
+      ${p.image?`<img src="${esc(p.image)}" alt="" loading="lazy">`:'<div class="ph"></div>'}
+      <span><b>${esc(p.name)}</b><small>${esc([p.brand, p.weight?`${p.weight} ${p.unit}`:""].filter(Boolean).join(" · "))}</small></span>
+      <span class="p">${p.price!=null?kr(p.price):""}</span></button>`).join("");
+    box._results = r.results;
+  }catch(e){
+    if (seq !== searchSeq) return;
+    box.innerHTML = `<p class="note" style="color:var(--warn)">${e.code==="mangler_nokkel"?"Kassalapp-nøkkelen er ikke satt opp ennå.":e.code==="for_mange_kall"?"For mange søk akkurat nå. Vent litt.":"Søket feilet. Prøv igjen."}</p>`;
+  }
+}
+$("pickSearch").addEventListener("input", ()=>{ clearTimeout(searchT); searchT = setTimeout(doSearch, 400); });
+$("pickResults").addEventListener("click", e=>{
+  const b = e.target.closest(".prod"); if (!b || !pickItem) return;
+  const p = $("pickResults")._results[+b.dataset.i];
+  const pname = [p.name, p.weight?`${p.weight} ${p.unit}`:""].filter(Boolean).join(" ").slice(0,120);
+  const id = pickItem.id;
+  op({op:"link", id, ean:p.ean, pname}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean=p.ean; it.pname=pname;} });
+  prices = null; closePicker();
+});
+$("pickUnlink").addEventListener("click", ()=>{ const id=pickItem.id; op({op:"link", id, ean:""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean="";it.pname="";} }); closePicker(); });
+$("pickClose").addEventListener("click", closePicker);
+$("picker").addEventListener("click", e=>{ if (e.target.id==="picker") closePicker(); });
+
+// ---------- Hendelser ----------
+function addItem(raw){
+  const {name, qty} = parseInput(raw); if (!name) return;
+  op({op:"add", name, qty, cat:guessCat(name)}, ()=>{
+    const k = keyOf(name); if (S.items.some(i=>keyOf(i.name)===k && !i.done)) return;
+    const o = S.often?.[k];
+    S.items.push({id:"tmp"+Date.now()+Math.random(), name, qty, cat:o?.cat||guessCat(name), ean:o?.ean||"", pname:o?.pname||"", done:false, ts:Date.now()});
+  });
+}
+$("addForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const v = $("addInput").value; $("addInput").value = "";
+  v.split(/[,\n]/).map(s=>s.trim()).filter(Boolean).forEach(addItem);
+});
+document.addEventListener("click", e=>{
+  const add = e.target.closest("[data-add]"); if (add){ addItem(add.dataset.add); return; }
+  const pid = e.target.closest("[data-pickid]"); if (pid){ const it=S.items.find(i=>i.id===pid.dataset.pickid); if(it) openPicker(it); return; }
+  const act = e.target.closest("[data-act]"); if (!act || act.tagName==="SELECT" || act.tagName==="INPUT") return;
+  const it = S.items.find(i=>i.id===act.closest("[data-id]")?.dataset.id); if (!it || it.id.startsWith("tmp")) return;
+  const a = act.dataset.act;
+  if (a==="toggle") op({op:"toggle", id:it.id}, ()=>{ it.done=!it.done; });
+  if (a==="del") op({op:"remove", ids:[it.id]}, ()=>{ S.items=S.items.filter(i=>i.id!==it.id); });
+  if (a==="edit"){ editing = editing===it.id?null:it.id; render(); }
+  if (a==="pick") openPicker(it);
+});
+document.addEventListener("change", e=>{
+  const a = e.target.dataset.act; const it = S.items.find(i=>i.id===e.target.closest("[data-id]")?.dataset.id); if (!it) return;
+  if (a==="cat") op({op:"cat", id:it.id, cat:e.target.value}, ()=>{ it.cat=e.target.value; });
+  if (a==="qty") op({op:"qty", id:it.id, qty:e.target.value.trim()}, ()=>{ it.qty=e.target.value.trim(); });
+});
+$("calcBtn").addEventListener("click", calc);
+$("clearDone").addEventListener("click", ()=>{ const ids=S.items.filter(i=>i.done).map(i=>i.id); if(ids.length) op({op:"remove", ids}, ()=>{ S.items=S.items.filter(i=>!i.done); }); });
+let armed=false, armT;
+$("clearAll").addEventListener("click", e=>{
+  if (!armed){ armed=true; e.target.textContent="Trykk igjen for å tømme"; clearTimeout(armT); armT=setTimeout(()=>{armed=false;e.target.textContent="Tøm hele lista";},3000); return; }
+  armed=false; e.target.textContent="Tøm hele lista";
+  op({op:"remove", ids:S.items.map(i=>i.id)}, ()=>{ S.items=[]; });
+});
+
+// ---------- Innlogging og start ----------
+function showLogin(wrong){
+  $("app").hidden = true; $("login").hidden = false; $("loginErr").hidden = !wrong || !code;
+  $("code").focus();
+}
+$("loginForm").addEventListener("submit", async e=>{
+  e.preventDefault(); code = $("code").value.trim(); store.set("hl-kode", code);
+  start();
+});
+let timer;
+async function start(){
+  try{
+    const r = await api("/api/state");
+    S = r; $("login").hidden = true; $("app").hidden = false; render();
+    setStatus("Delt lista · oppdateres automatisk");
+    clearInterval(timer);
+    timer = setInterval(()=>{ if (document.visibilityState==="visible") pull(); }, 5000);
+  }catch(e){ if (e.code!=="login"){ $("app").hidden=false; setStatus("Får ikke kontakt med serveren.", true); } }
+}
+document.addEventListener("visibilitychange", ()=>{ if (document.visibilityState==="visible") pull(); });
+start();
+</script>
+</body>
+</html>
