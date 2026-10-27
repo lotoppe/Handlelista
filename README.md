@@ -31,6 +31,7 @@ Bruk gjerne et nytt prosjekt, så holdes handlelista adskilt fra bryllupssiden (
 - Skriv varer nederst, gjerne flere med komma: `2 melk, brød, bananer`.
 - Trykk **velg** på en vare og plukk produktet dere kjøper. Valget huskes til neste gang.
 - Trykk **Hva koster lista?** for totalpris per kjede. Antall (`2`, `3 stk`) ganges inn; vekt og volum teller som én.
+- Har ikke en kjede akkurat produktet dere valgte, bruker appen den billigste varen i samme kategori og omtrent samme størrelse (±35 %), regnet om til samme størrelse. Trykk «lignende varer» under kjeden for å se hva den valgte. Kan slås av med bryteren.
 - Prisene er ordinære hyllepriser fra Kassalapp. Medlemspriser (Coop, Trumf) er ikke med.
 
 ## Pause i Supabase

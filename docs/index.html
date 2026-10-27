@@ -48,6 +48,13 @@ h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margi
 .store-row b{font-weight:600}
 .store-row .sum{font-family:var(--display);font-weight:600;font-size:1.15rem;font-variant-numeric:tabular-nums;text-align:right}
 .store-row small{grid-column:1/-1;color:var(--muted);font-size:.78rem}
+.store-row details{grid-column:1/-1;font-size:.8rem;color:var(--muted)}
+.store-row summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:none}
+.store-row summary::-webkit-details-marker{display:none}
+.store-row ul{margin:6px 0 2px;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.store-row li b{color:var(--ink);font-weight:500}
+.toggle{display:flex;align-items:center;gap:10px;font-size:.88rem;cursor:pointer}
+.toggle input{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .note{font-size:.82rem;color:var(--muted);margin:0}
 .note button{border:0;background:none;color:var(--accent);font-weight:600;padding:0;cursor:pointer;text-decoration:underline}
 
@@ -141,6 +148,7 @@ h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margi
       </div>
       <button class="primary" id="calcBtn" type="button">Hva koster lista?</button>
     </div>
+    <label class="toggle" for="similarToggle"><input type="checkbox" id="similarToggle" checked> Bruk lignende vare når butikken ikke har akkurat den</label>
     <div id="totalsBody"></div>
   </section>
 
@@ -279,8 +287,8 @@ function render(){
   renderTotals();
 }
 function cheapest(ean){
-  const p = prices?.byEan[ean]; if (!p || !p.stores.length) return null;
-  return p.stores.reduce((a,b)=>b.price<a.price?b:a);
+  const ex = (prices?.byEan[ean]?.stores||[]).filter(s=>!s.sub); if (!ex.length) return null;
+  return ex.reduce((a,b)=>b.price<a.price?b:a);
 }
 function itemHTML(it){
   let sub = it.qty ? esc(it.qty) : "";
@@ -315,8 +323,9 @@ function renderTotals(){
   for (const it of linked){
     const p = prices.byEan[it.ean]; if (!p) continue;
     for (const s of p.stores){
-      const c = chains[s.code] ||= {name:s.name, sum:0, have:0};
+      const c = chains[s.code] ||= {name:s.name, sum:0, have:0, subs:[]};
       c.sum += s.price * qtyN(it.qty); c.have++;
+      if (s.sub) c.subs.push({item:it.name, ...s.sub, price:s.price});
     }
   }
   const total = linked.length;
@@ -326,16 +335,20 @@ function renderTotals(){
   body.innerHTML = rows.map(r=>`<div class="store-row${r===bestFull?" best":""}">
       <b>${esc(r.name)}</b><span class="sum">${kr(r.sum)} kr</span>
       <small>${r.have===total?(r===bestFull?"Billigst for hele lista":"Har alle varene"):`Mangler pris på ${total-r.have} av ${total}`}</small>
+      ${r.subs.length?`<details><summary>${r.subs.length} ${r.subs.length===1?"lignende vare":"lignende varer"} ›</summary><ul>${r.subs.map(x=>`<li>${esc(x.item)}: <b>${esc(x.name)}</b>${x.size&&!/\d\s*(g|kg|ml|l|stk)\b/i.test(x.name)?" "+esc(x.size):""} · ${x.actual!=null?`${kr(x.actual)}, regnet som ${kr(x.price)} for ${esc(x.per)}`:kr(x.price)}</li>`).join("")}</ul></details>`:""}
     </div>`).join("") + unlinkedNote +
-    `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.</p>`;
+    (prices.partial?`<p class="note">Fant ikke lignende varer for alt på én gang. Trykk «Oppdater pris» igjen om litt, så fylles resten inn.</p>`:"") +
+    `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.${$("similarToggle").checked?" Lignende vare betyr billigste vare i samme kategori og omtrent samme størrelse.":""}</p>`;
 }
 async function calc(){
   const open = (S.items||[]).filter(i=>!i.done && i.ean);
   if (!open.length){ prices = {byEan:{}}; renderTotals(); $("totalsBody").insertAdjacentHTML("afterbegin",'<p class="note">Velg produkt for minst én vare først.</p>'); return; }
   const btn = $("calcBtn"); btn.disabled = true; btn.textContent = "Henter priser…";
   try{
-    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({eans:open.map(i=>i.ean)})});
-    prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i]))};
+    const similar = $("similarToggle").checked;
+    const items = open.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q}));
+    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar})});
+    prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i])), partial:!!r.partial};
     render();
   }catch(e){
     const msg = {mangler_nokkel:"Kassalapp-nøkkelen er ikke satt opp ennå.",for_mange_kall:"For mange søk akkurat nå. Vent et minutt.",ugyldig_nokkel:"Kassalapp avviste nøkkelen. Sjekk at den er riktig."}[e.code] || "Fikk ikke hentet priser. Prøv igjen.";
@@ -376,9 +389,11 @@ $("pickSearch").addEventListener("input", ()=>{ clearTimeout(searchT); searchT =
 $("pickResults").addEventListener("click", e=>{
   const b = e.target.closest(".prod"); if (!b || !pickItem) return;
   const p = $("pickResults")._results[+b.dataset.i];
-  const pname = [p.name, p.weight?`${p.weight} ${p.unit}`:""].filter(Boolean).join(" ").slice(0,120);
+  const hasSize = /\d\s*(g|kg|ml|l|cl|dl|stk)\b/i.test(p.name);
+  const pname = [p.name, p.weight && !hasSize ? `${p.weight} ${p.unit==="piece"?"stk":p.unit}` : ""].filter(Boolean).join(" ").slice(0,120);
   const id = pickItem.id;
-  op({op:"link", id, ean:p.ean, pname}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean=p.ean; it.pname=pname;} });
+  const meta = {kcat:p.kcat||0, w:p.weight||0, wu:p.unit||"", q:$("pickSearch").value.trim()};
+  op({op:"link", id, ean:p.ean, pname, ...meta}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){Object.assign(it,{ean:p.ean,pname},meta);} });
   prices = null; closePicker();
 });
 $("pickUnlink").addEventListener("click", ()=>{ const id=pickItem.id; op({op:"link", id, ean:""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean="";it.pname="";} }); closePicker(); });
@@ -416,6 +431,8 @@ document.addEventListener("change", e=>{
   if (a==="qty") op({op:"qty", id:it.id, qty:e.target.value.trim()}, ()=>{ it.qty=e.target.value.trim(); });
 });
 $("calcBtn").addEventListener("click", calc);
+try{ $("similarToggle").checked = store.get("hl-lignende") !== "0"; }catch(e){}
+$("similarToggle").addEventListener("change", e=>{ store.set("hl-lignende", e.target.checked?"1":"0"); if (prices) calc(); });
 $("clearDone").addEventListener("click", ()=>{ const ids=S.items.filter(i=>i.done).map(i=>i.id); if(ids.length) op({op:"remove", ids}, ()=>{ S.items=S.items.filter(i=>!i.done); }); });
 let armed=false, armT;
 $("clearAll").addEventListener("click", e=>{

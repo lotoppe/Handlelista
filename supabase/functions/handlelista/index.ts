@@ -70,8 +70,10 @@ function dbHeaders(extra: Record<string, string> = {}) {
   return h;
 }
 type State = { v: number; items: Item[]; often: Record<string, Often> };
-type Item = { id: string; name: string; qty: string; cat: string; ean: string; pname: string; done: boolean; ts: number };
-type Often = { name: string; cat: string; count: number; last: number; ean?: string; pname?: string };
+// kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
+type Meta = { kcat?: number; w?: number; wu?: string; q?: string };
+type Item = { id: string; name: string; qty: string; cat: string; ean: string; pname: string; done: boolean; ts: number } & Meta;
+type Often = { name: string; cat: string; count: number; last: number; ean?: string; pname?: string } & Meta;
 
 async function load(): Promise<State> {
   const r = await fetch(`${DB_URL}/rest/v1/handlelista_state?id=eq.${ROW}&select=data`, { headers: dbHeaders() });
@@ -129,7 +131,7 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       if (dup) { if (o.qty) dup.qty = clean(o.qty, 20); return; }
       if (s.items.length >= 200) return false;
       const cat = known?.cat || clean(o.cat, 20) || "annet";
-      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", done: false, ts: Date.now() });
+      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, done: false, ts: Date.now() });
       s.often[k] = { ...(known || {}), name, cat, count: (known?.count || 0) + 1, last: Date.now() };
       const keys = Object.keys(s.often);
       if (keys.length > 300) {
@@ -149,8 +151,12 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       const it = find(o.id); if (!it) return;
       it.ean = /^\d{8,14}$/.test(String(o.ean || "")) ? String(o.ean) : "";
       it.pname = it.ean ? clean(o.pname, 120) : "";
+      const meta: Meta = it.ean
+        ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined }
+        : { kcat: undefined, w: undefined, wu: undefined, q: undefined };
+      Object.assign(it, meta);
       const k = key(it.name);
-      s.often[k] = { ...(s.often[k] || { name: it.name, cat: it.cat, count: 1, last: Date.now() }), ean: it.ean, pname: it.pname };
+      s.often[k] = { ...(s.often[k] || { name: it.name, cat: it.cat, count: 1, last: Date.now() }), ean: it.ean, pname: it.pname, ...meta };
       return;
     }
     case "remove": { const ids = new Set((o.ids as string[]) || []); s.items = s.items.filter((i) => !ids.has(i.id)); return; }
@@ -176,77 +182,229 @@ async function kassal(path: string, init: RequestInit = {}) {
   if (!r.ok) return { error: "kassalapp_feil", status: 502 };
   return { body: await r.json() };
 }
+// ---------- Hjelpere for Kassalapp-data ----------
 // deno-lint-ignore no-explicit-any
-const num = (v: any) => (typeof v === "number" ? v : v && typeof v.price === "number" ? v.price : null);
+type Any = any;
+const first = (v: Any) => (Array.isArray(v) ? v[0] : v);
+// Pris kan komme som tall, {price} eller [{price}]
+const num = (v: Any): number | null => {
+  v = first(v);
+  return typeof v === "number" ? v : v && typeof v.price === "number" ? v.price : null;
+};
+const unitNum = (p: Any): number | null => {
+  if (typeof p?.current_unit_price === "number") return p.current_unit_price;
+  const c = first(p?.current_price);
+  return c && typeof c.unit_price === "number" ? c.unit_price : null;
+};
+function storeInfo(st: Any, fallbackName = ""): { code: string; name: string } {
+  st = first(st);
+  if (typeof st === "string") return { code: st, name: fallbackName || st };
+  return { code: String(st?.code || st?.name || ""), name: String(st?.name || st?.code || "") };
+}
+// Dypeste (mest presise) kategori, f.eks. «Grovbrød» framfor «Brød og bakevarer»
+function deepestCat(c: Any): number | undefined {
+  const arr = Array.isArray(c) ? c : c ? [c] : [];
+  let best: Any;
+  for (const x of arr) if (x && typeof x.id === "number" && (!best || (x.depth ?? 0) >= (best.depth ?? 0))) best = x;
+  return best?.id;
+}
+// Samme enhet for sammenligning: g, ml eller stk
+function normW(w: unknown, u: unknown): { v: number; u: string } | null {
+  const n = Number(w);
+  if (!n) return null;
+  const unit = String(u || "").toLowerCase();
+  const f: Record<string, [number, string]> = { kg: [1000, "g"], g: [1, "g"], l: [1000, "ml"], dl: [100, "ml"], cl: [10, "ml"], ml: [1, "ml"] };
+  const [m, base] = f[unit] || [1, "stk"];
+  return { v: n * m, u: base };
+}
+const sizeLabel = (w: unknown, u: unknown) => (Number(w) ? `${w} ${u === "piece" ? "stk" : u || ""}`.trim() : "");
 
+// ---------- Produktsøk ----------
 async function search(url: URL) {
   const q = (url.searchParams.get("q") || "").trim();
   if (q.length < 3) return json({ results: [] });
   const params = new URLSearchParams({ search: q, size: "20", unique: "1", exclude_without_ean: "1" });
   const res = await kassal("/products?" + params);
   if (res.error) return json({ error: res.error }, res.status);
-  // deno-lint-ignore no-explicit-any
-  const results = (res.body.data || []).filter((p: any) => p.ean).map((p: any) => ({
+  const results = (res.body.data || []).filter((p: Any) => p.ean).map((p: Any) => ({
     ean: String(p.ean), name: p.name, brand: p.brand || p.vendor || "", image: p.image || "",
-    weight: p.weight ?? null, unit: p.weight_unit || "", price: num(p.current_price), store: p.store?.name || "",
+    weight: p.weight ?? null, unit: p.weight_unit || "", price: num(p.current_price),
+    store: storeInfo(p.store).name, kcat: deepestCat(p.category) ?? null,
   }));
   return json({ results });
 }
 
-type Store = { code: string; name: string; price: number; checked?: string };
-// deno-lint-ignore no-explicit-any
-function storeOf(x: any): Store | null {
+// ---------- Mellomlager i Postgres (sparer Kassalapp-kall) ----------
+async function cacheGet(keys: string[]): Promise<Map<string, Any>> {
+  const out = new Map<string, Any>();
+  if (!keys.length) return out;
+  try {
+    for (let i = 0; i < keys.length; i += 80) {
+      const chunk = keys.slice(i, i + 80).map((k) => `"${k.replace(/"/g, "")}"`).join(",");
+      const r = await fetch(
+        `${DB_URL}/rest/v1/handlelista_cache?select=key,data&key=in.(${encodeURIComponent(chunk)})&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`,
+        { headers: dbHeaders() },
+      );
+      if (r.ok) for (const row of await r.json()) out.set(row.key, row.data);
+    }
+  } catch (e) { console.error("cacheGet", e); }
+  return out;
+}
+async function cachePut(rows: { key: string; data: unknown; hours: number }[]) {
+  if (!rows.length) return;
+  try {
+    const now = Date.now();
+    await fetch(`${DB_URL}/rest/v1/handlelista_cache`, {
+      method: "POST",
+      headers: dbHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify(rows.map((r) => ({ key: r.key, data: r.data ?? { none: true }, expires_at: new Date(now + r.hours * 3600e3).toISOString() }))),
+    });
+  } catch (e) { console.error("cachePut", e); }
+}
+
+// ---------- Priser ----------
+type Store = { code: string; name: string; price: number; checked?: string; sub?: { name: string; size: string; actual?: number; per?: string } };
+type Want = { ean: string; name?: string; q?: string } & Meta;
+
+function storeOf(x: Any): Store | null {
   const price = num(x?.current_price ?? x?.price);
   if (price == null) return null;
-  const st = x?.store;
-  const name = typeof st === "string" ? x?.name || st : st?.name || "";
-  const code = typeof st === "string" ? st : st?.code || st?.name || name;
-  return { code: String(code), name: String(name || code), price, checked: x?.last_checked || x?.current_price?.date };
+  const si = storeInfo(x?.store, typeof x?.store === "string" ? x?.name : "");
+  if (!si.code) return null;
+  return { code: si.code, name: si.name, price, checked: x?.last_checked || first(x?.current_price)?.date };
 }
-// Én kjede kan ha flere treff: behold billigste
-function bestPerChain(list: Store[]): Store[] {
+function bestPerChain(list: (Store | null)[]): Store[] {
   const m = new Map<string, Store>();
-  for (const s of list) { const o = m.get(s.code); if (!o || s.price < o.price) m.set(s.code, s); }
+  for (const s of list) if (s) { const o = m.get(s.code); if (!o || s.price < o.price) m.set(s.code, s); }
   return [...m.values()];
 }
 
-async function pricesForEan(ean: string): Promise<{ name: string; stores: Store[] }> {
+// Eksakt pris per kjede + metadata (kategori, vekt) for én strekkode
+async function lookupEan(ean: string): Promise<{ name: string; stores: Store[]; meta: Meta }> {
   const res = await kassal("/products/ean/" + ean);
-  if (res.error) return { name: "", stores: [] };
+  if (res.error) return { name: "", stores: [], meta: {} };
   const d = res.body?.data ?? {};
-  // deno-lint-ignore no-explicit-any
-  const products: any[] = Array.isArray(d) ? d : d.products || [];
-  return { name: d.name || products[0]?.name || "", stores: bestPerChain(products.map(storeOf).filter(Boolean) as Store[]) };
+  const products: Any[] = Array.isArray(d) ? d : d.products || [];
+  const p0 = products.find((p) => p?.category) || products[0] || {};
+  return {
+    name: d.name || p0.name || "",
+    stores: bestPerChain(products.map(storeOf)),
+    meta: { kcat: deepestCat(p0.category), w: Number(p0.weight) || undefined, wu: p0.weight_unit || undefined },
+  };
+}
+
+// Billigste lignende vare i én kjede: samme kategori, omtrent samme størrelse
+async function findSimilar(chain: Store, want: Want): Promise<Store | null | "limit"> {
+  const target = normW(want.w, want.wu);
+  const tries: URLSearchParams[] = [];
+  if (want.kcat) tries.push(new URLSearchParams({ store: chain.code, category_id: String(want.kcat), size: "60" }));
+  const term = (want.q || want.name || "").trim();
+  if (term.length >= 3) tries.push(new URLSearchParams({ store: chain.code, search: term, size: "40" }));
+
+  for (const params of tries) {
+    const res = await kassal("/products?" + params);
+    if (res.error === "for_mange_kall") return "limit";
+    if (res.error) continue;
+    const cands = (res.body.data || [])
+      .map((p: Any) => ({ p, price: num(p.current_price), unit: unitNum(p), w: normW(p.weight, p.weight_unit) }))
+      .filter((c: Any) => c.price != null && storeInfo(c.p.store).code === chain.code)
+      .filter((c: Any) => {
+        if (!target) return true;
+        if (!c.w || c.w.u !== target.u) return false;
+        const r = c.w.v / target.v;
+        return r >= 0.65 && r <= 1.5; // ±35 % størrelse
+      });
+    if (!cands.length) continue;
+    // Billigst per kilo/liter når vi har det, ellers billigst
+    cands.sort((a: Any, b: Any) => (a.unit ?? a.price) - (b.unit ?? b.price));
+    const c = cands[0];
+    // Regn om til samme størrelse som det valgte produktet, så totalsummene kan sammenlignes
+    const scaled = target && c.w && Math.abs(c.w.v / target.v - 1) > 0.02;
+    const price = scaled ? Math.round(c.price * (target!.v / c.w.v) * 100) / 100 : c.price;
+    return {
+      code: chain.code, name: chain.name, price,
+      sub: { name: c.p.name, size: sizeLabel(c.p.weight, c.p.weight_unit), ...(scaled ? { actual: c.price, per: sizeLabel(want.w, want.wu) } : {}) },
+    };
+  }
+  return null;
 }
 
 let loggedShape = false;
-async function prices(body: { eans?: unknown[] }) {
-  const list = [...new Set((body.eans || []).map(String).filter((e) => /^\d{8,14}$/.test(e)))].slice(0, 100);
-  if (!list.length) return json({ items: [] });
+async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolean }) {
+  const wants: Want[] = (body.items?.length ? body.items : (body.eans || []).map((e) => ({ ean: String(e) })))
+    .filter((w) => /^\d{8,14}$/.test(String(w?.ean)))
+    .slice(0, 100);
+  const uniq = [...new Map(wants.map((w) => [String(w.ean), { ...w, ean: String(w.ean) }])).values()];
+  if (!uniq.length) return json({ items: [] });
   const byEan = new Map<string, { ean: string; name: string; stores: Store[] }>();
 
-  const res = await kassal("/products/prices-bulk", { method: "POST", body: JSON.stringify({ eans: list, days: 1 }) });
+  // 1) Eksakte priser i ett samlekall
+  const res = await kassal("/products/prices-bulk", { method: "POST", body: JSON.stringify({ eans: uniq.map((w) => w.ean), days: 1 }) });
   if (res.error === "for_mange_kall") return json({ error: res.error }, 429);
   if (!res.error) {
-    if (!loggedShape) { loggedShape = true; console.log("prices-bulk form:", JSON.stringify(res.body).slice(0, 600)); }
+    if (!loggedShape) { loggedShape = true; console.log("prices-bulk form:", JSON.stringify(res.body).slice(0, 400)); }
     const data = res.body?.data;
-    // deno-lint-ignore no-explicit-any
-    const arr: any[] = Array.isArray(data) ? data : data && typeof data === "object" ? Object.values(data) : [];
+    const arr: Any[] = Array.isArray(data) ? data : data && typeof data === "object" ? Object.values(data) : [];
     for (const it of arr) {
       const ean = String(it?.ean ?? "");
-      const stores = bestPerChain(((it?.stores || it?.prices || []) as unknown[]).map(storeOf).filter(Boolean) as Store[]);
+      const stores = bestPerChain(((it?.stores || it?.prices || []) as Any[]).map(storeOf));
       if (ean && stores.length) byEan.set(ean, { ean, name: it.name || "", stores });
     }
   }
-
-  // Det samlesvaret ikke dekket: hent per strekkode, fem om gangen
-  const missing = list.filter((e) => !byEan.has(e));
-  for (let i = 0; i < missing.length; i += 5) {
-    await Promise.all(missing.slice(i, i + 5).map(async (ean) => {
-      const r = await pricesForEan(ean);
-      if (r.stores.length) byEan.set(ean, { ean, ...r });
-      else console.log("Ingen priser for", ean);
+  // 2) Det samlesvaret ikke dekket, og metadata vi mangler: per strekkode (mellomlagret)
+  const needLookup = uniq.filter((w) => !byEan.has(w.ean) || (body.similar && !w.kcat && !w.w));
+  const cached = await cacheGet(needLookup.map((w) => "ean:" + w.ean));
+  const toCache: { key: string; data: unknown; hours: number }[] = [];
+  for (let i = 0; i < needLookup.length; i += 5) {
+    await Promise.all(needLookup.slice(i, i + 5).map(async (w) => {
+      let r = cached.get("ean:" + w.ean);
+      if (!r || r.none) { r = await lookupEan(w.ean); toCache.push({ key: "ean:" + w.ean, data: r, hours: 6 }); }
+      if (!byEan.has(w.ean) && r.stores?.length) byEan.set(w.ean, { ean: w.ean, name: r.name, stores: r.stores });
+      if (!w.kcat) w.kcat = r.meta?.kcat;
+      if (!w.w) { w.w = r.meta?.w; w.wu = r.meta?.wu; }
     }));
   }
-  return json({ items: [...byEan.values()], fetched: new Date().toISOString() });
+
+  // 3) Lignende varer der kjeden mangler akkurat produktet
+  let subs = 0, limited = false;
+  if (body.similar) {
+    // Kjeder som har minst 40 % av varene regnes som aktuelle
+    const seen = new Map<string, { s: Store; n: number }>();
+    for (const it of byEan.values()) for (const s of it.stores) {
+      const o = seen.get(s.code); seen.set(s.code, { s: o?.s || s, n: (o?.n || 0) + 1 });
+    }
+    const need = Math.max(1, Math.ceil(uniq.length * 0.4));
+    const chains = [...seen.values()].filter((c) => c.n >= need).sort((a, b) => b.n - a.n).slice(0, 8).map((c) => c.s);
+
+    const jobs: { w: Want; chain: Store; key: string }[] = [];
+    for (const w of uniq) {
+      const have = new Set((byEan.get(w.ean)?.stores || []).map((s) => s.code));
+      for (const chain of chains) if (!have.has(chain.code)) jobs.push({ w, chain, key: `sub:${w.ean}:${chain.code}:${w.kcat || ""}:${w.w || ""}` });
+    }
+    const subCache = await cacheGet(jobs.map((j) => j.key));
+    const MAX_CALLS = 30;
+    let calls = 0;
+    for (let i = 0; i < jobs.length; i += 4) {
+      await Promise.all(jobs.slice(i, i + 4).map(async (j) => {
+        let hit: Store | null | undefined = subCache.has(j.key) ? (subCache.get(j.key).none ? null : subCache.get(j.key)) : undefined;
+        if (hit === undefined) {
+          if (limited || calls >= MAX_CALLS) return;
+          calls++;
+          const r = await findSimilar(j.chain, j.w);
+          if (r === "limit") { limited = true; return; }
+          hit = r;
+          toCache.push({ key: j.key, data: r, hours: 12 });
+        }
+        if (hit) {
+          const entry = byEan.get(j.w.ean) || { ean: j.w.ean, name: j.w.name || "", stores: [] };
+          entry.stores.push({ ...hit, code: j.chain.code, name: j.chain.name });
+          byEan.set(j.w.ean, entry);
+          subs++;
+        }
+      }));
+    }
+    if (calls >= MAX_CALLS) limited = true;
+  }
+  await cachePut(toCache);
+  return json({ items: [...byEan.values()], subs, partial: limited, fetched: new Date().toISOString() });
 }
