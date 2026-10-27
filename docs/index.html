@@ -113,6 +113,29 @@ h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margi
 .prod small{color:var(--muted);font-size:.78rem}
 .prod .p{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 
+/* Innstillinger */
+.head-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.gear{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:7px 11px;font-weight:600;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:6px}
+.gear svg{width:16px;height:16px}
+.sheet.tall{height:88vh}
+.tabs{display:flex;gap:6px;background:var(--chip);padding:4px;border-radius:12px}
+.tabs button{flex:1;border:0;background:transparent;padding:9px;border-radius:9px;font-weight:600;cursor:pointer;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.pane{overflow-y:auto;display:flex;flex-direction:column;gap:12px;min-height:0;flex:1}
+.row-form{display:flex;gap:8px}
+.row-form input{flex:1;min-width:0;font:500 1rem var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.fav{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 10px 10px 12px;display:flex;flex-direction:column;gap:8px}
+.fav-top{display:flex;align-items:center;gap:8px}
+.fav-top .nm{flex:1;min-width:0}
+.fav-top .nm b{display:block;font-weight:600;overflow-wrap:anywhere}
+.fav-top .nm small{display:block;font-size:.8rem;color:var(--accent);overflow-wrap:anywhere}
+.fav-top .nm small.none{color:var(--muted)}
+.fav input.alias{font:400 .88rem var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%}
+.smallbtn{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:9px;padding:6px 10px;font-size:.82rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.storelist{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.storelist label{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line);cursor:pointer}
+.storelist label:first-child{border-top:0}
+.storelist input{width:20px;height:20px;accent-color:var(--accent);margin:0}
 .login{max-width:360px;margin:18vh auto 0;display:flex;flex-direction:column;gap:12px}
 .login p{color:var(--muted);margin:0}
 @media (prefers-reduced-motion:no-preference){.item{transition:background .15s}}
@@ -137,7 +160,10 @@ h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margi
       <h1>Handlelista</h1>
       <div class="status" id="status">Henter lista…</div>
     </div>
-    <div class="count" id="count"></div>
+    <div class="head-right">
+      <button class="gear" id="openSettings" type="button" aria-label="Innstillinger"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>Innstillinger</button>
+      <div class="count" id="count"></div>
+    </div>
   </header>
 
   <section class="totals" id="totals" hidden>
@@ -171,6 +197,33 @@ h1{font-family:var(--display);font-weight:800;font-size:2rem;line-height:1;margi
     <button class="primary" type="submit">Legg til</button>
   </form>
 </div>
+</div>
+
+<div class="scrim" id="settings" hidden>
+  <div class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <div class="sheet-head">
+      <h3 id="setTitle">Innstillinger</h3>
+      <button class="textbtn" id="setClose" type="button">Ferdig</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabFav" aria-selected="true">Faste varer</button>
+      <button type="button" role="tab" id="tabStores" aria-selected="false">Butikker</button>
+    </div>
+    <div class="pane" id="paneFav">
+      <p class="note">Koble varene dere pleier å kjøpe til et bestemt produkt. Skriver dere navnet på lista, er produktet valgt med en gang.</p>
+      <form class="row-form" id="favForm" autocomplete="off">
+        <input id="favName" type="text" placeholder="Ny fast vare, f.eks. «Smør»" aria-label="Ny fast vare">
+        <button class="primary" type="submit">Legg til</button>
+      </form>
+      <div id="favList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div id="favSuggest"></div>
+    </div>
+    <div class="pane" id="paneStores" hidden>
+      <p class="note">Velg kjedene dere handler i. Søk og totalpris viser bare disse. Ingen avhuket betyr alle kjeder.</p>
+      <div id="storeList"></div>
+      <button class="textbtn" id="storesAll" type="button" style="align-self:flex-start">Vis alle kjeder</button>
+    </div>
+  </div>
 </div>
 
 <div class="scrim" id="picker" hidden>
@@ -259,6 +312,7 @@ async function op(o, optimistic){
 
 // ---------- Render ----------
 function render(){
+  if (!$("settings").hidden) renderSettings();
   const items = S.items||[];
   const open = items.filter(i=>!i.done);
   $("count").textContent = items.length ? `${open.length} igjen av ${items.length}` : "";
@@ -266,8 +320,8 @@ function render(){
   $("totals").hidden = !open.length;
 
   const onList = new Set(open.map(i=>keyOf(i.name)));
-  const sugg = Object.entries(S.often||{}).filter(([k])=>!onList.has(k)).map(([,o])=>o)
-    .sort((a,b)=>(b.count-a.count)||((b.last||0)-(a.last||0))).slice(0,14);
+  const sugg = Object.entries(S.often||{}).filter(([k,o])=>!onList.has(k) && !(o.aliases||[]).some(a=>onList.has(keyOf(a)))).map(([,o])=>o)
+    .sort((a,b)=>((b.fast?1:0)-(a.fast?1:0))||(b.count-a.count)||((b.last||0)-(a.last||0))).slice(0,14);
   $("oftenWrap").hidden = !sugg.length;
   $("often").innerHTML = sugg.map(o=>`<button class="chip" type="button" data-add="${esc(o.name)}">+ ${esc(o.name)}</button>`).join("");
 
@@ -347,7 +401,7 @@ async function calc(){
   try{
     const similar = $("similarToggle").checked;
     const items = open.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q}));
-    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar})});
+    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar, stores:chosenStores()})});
     prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i])), partial:!!r.partial};
     render();
   }catch(e){
@@ -358,26 +412,30 @@ async function calc(){
 
 // ---------- Produktvelger ----------
 let pickItem = null, searchT = null, searchSeq = 0;
+// pickItem er enten en vare på lista ({id,...}) eller en fast vare ({favKey,...})
 function openPicker(it){
   pickItem = it;
   $("pickTitle").textContent = it.name;
-  $("pickSearch").value = it.pname || it.name;
+  $("pickHint").textContent = it.favKey ? "Velg produktet dere vil ha når dere skriver «"+it.name+"»." : "Velg varen du pleier å kjøpe. Appen husker valget neste gang.";
+  $("pickSearch").value = it.q || it.pname || it.name;
   $("pickUnlink").hidden = !it.ean;
   $("picker").hidden = false;
   doSearch();
 }
+const chosenStores = () => (S.settings?.stores||[]);
 function closePicker(){ $("picker").hidden = true; pickItem = null; }
 async function doSearch(){
   const q = $("pickSearch").value.trim(), seq = ++searchSeq, box = $("pickResults");
   if (q.length < 3){ box.innerHTML = '<p class="note">Skriv minst tre bokstaver.</p>'; return; }
   box.innerHTML = '<p class="note">Søker…</p>';
   try{
-    const r = await api("/api/search?q="+encodeURIComponent(q));
+    const st = chosenStores();
+    const r = await api("/api/search?q="+encodeURIComponent(q)+(st.length?"&stores="+encodeURIComponent(st.join(",")):""));
     if (seq !== searchSeq) return;
-    if (!r.results.length){ box.innerHTML = '<p class="note">Ingen treff. Prøv et kortere eller annet ord.</p>'; return; }
+    if (!r.results.length){ box.innerHTML = `<p class="note">Ingen treff${chosenStores().length?" i butikkene dere har valgt":""}. Prøv et kortere eller annet ord.</p>`; return; }
     box.innerHTML = r.results.map((p,i)=>`<button class="prod${pickItem?.ean===p.ean?" sel":""}" type="button" data-i="${i}">
       ${p.image?`<img src="${esc(p.image)}" alt="" loading="lazy">`:'<div class="ph"></div>'}
-      <span><b>${esc(p.name)}</b><small>${esc([p.brand, p.weight?`${p.weight} ${p.unit}`:""].filter(Boolean).join(" · "))}</small></span>
+      <span><b>${esc(p.name)}</b><small>${esc([p.brand, p.weight?`${p.weight} ${p.unit==="piece"?"stk":p.unit}`:""].filter(Boolean).join(" · "))}</small>${p.stores?.length?`<small>${esc(p.stores.slice(0,4).join(", "))}${p.stores.length>4?" +"+(p.stores.length-4):""}</small>`:""}</span>
       <span class="p">${p.price!=null?kr(p.price):""}</span></button>`).join("");
     box._results = r.results;
   }catch(e){
@@ -391,14 +449,94 @@ $("pickResults").addEventListener("click", e=>{
   const p = $("pickResults")._results[+b.dataset.i];
   const hasSize = /\d\s*(g|kg|ml|l|cl|dl|stk)\b/i.test(p.name);
   const pname = [p.name, p.weight && !hasSize ? `${p.weight} ${p.unit==="piece"?"stk":p.unit}` : ""].filter(Boolean).join(" ").slice(0,120);
-  const id = pickItem.id;
   const meta = {kcat:p.kcat||0, w:p.weight||0, wu:p.unit||"", q:$("pickSearch").value.trim()};
-  op({op:"link", id, ean:p.ean, pname, ...meta}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){Object.assign(it,{ean:p.ean,pname},meta);} });
+  if (pickItem.favKey){
+    const k = pickItem.favKey, name = pickItem.name;
+    op({op:"fav_set", key:k, name, ean:p.ean, pname, ...meta}, ()=>{ S.often[k] = {...(S.often[k]||{name,count:0}), name, fast:true, ean:p.ean, pname, ...meta}; });
+  } else {
+    const id = pickItem.id;
+    op({op:"link", id, ean:p.ean, pname, ...meta}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){Object.assign(it,{ean:p.ean,pname},meta);} });
+  }
   prices = null; closePicker();
 });
-$("pickUnlink").addEventListener("click", ()=>{ const id=pickItem.id; op({op:"link", id, ean:""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean="";it.pname="";} }); closePicker(); });
+$("pickUnlink").addEventListener("click", ()=>{
+  if (pickItem.favKey){ const k=pickItem.favKey; op({op:"fav_set", key:k, name:pickItem.name, ean:""}, ()=>{ if(S.often[k]){S.often[k].ean="";S.often[k].pname="";} }); }
+  else { const id=pickItem.id; op({op:"link", id, ean:""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean="";it.pname="";} }); }
+  closePicker();
+});
 $("pickClose").addEventListener("click", closePicker);
 $("picker").addEventListener("click", e=>{ if (e.target.id==="picker") closePicker(); });
+
+// ---------- Innstillinger: faste varer og butikker ----------
+let setTab = "fav";
+function openSettings(tab){ if (tab) setTab = tab; $("settings").hidden = false; renderSettings(); }
+function closeSettings(){ $("settings").hidden = true; }
+function renderSettings(){
+  $("tabFav").setAttribute("aria-selected", setTab==="fav"); $("tabStores").setAttribute("aria-selected", setTab==="stores");
+  $("paneFav").hidden = setTab!=="fav"; $("paneStores").hidden = setTab!=="stores";
+  const often = S.often||{};
+  // Ikke tegn om mens noen skriver i et felt
+  const active = document.activeElement;
+  if (setTab==="fav" && !(active && active.classList?.contains("alias"))){
+    const favs = Object.entries(often).filter(([,o])=>o.fast).sort((a,b)=>a[1].name.localeCompare(b[1].name,"nb"));
+    $("favList").innerHTML = favs.length ? favs.map(([k,o])=>`<div class="fav" data-fav="${esc(k)}">
+        <div class="fav-top">
+          <div class="nm"><b>${esc(o.name)}</b>${o.ean?`<small>${esc(o.pname)}</small>`:`<small class="none">Ikke koblet til et produkt ennå</small>`}</div>
+          <button class="smallbtn" type="button" data-favact="pick">${o.ean?"Bytt":"Velg produkt"}</button>
+          <button class="smallbtn" type="button" data-favact="add" aria-label="Legg ${esc(o.name)} på lista">+ Lista</button>
+          <button class="icon" type="button" data-favact="remove" aria-label="Fjern ${esc(o.name)} fra faste varer">${ICON_X}</button>
+        </div>
+        <input class="alias" id="alias-${esc(k)}" data-favact="alias" value="${esc((o.aliases||[]).join(", "))}" placeholder="Andre navn, f.eks. margarin, meierismør" aria-label="Andre navn for ${esc(o.name)}">
+      </div>`).join("")
+      : `<p class="note">Ingen faste varer ennå. Legg til den første over, eller gjør en av varene dere har kjøpt før om til fast vare.</p>`;
+    const hist = Object.entries(often).filter(([,o])=>!o.fast && o.ean).sort((a,b)=>(b[1].count||0)-(a[1].count||0)).slice(0,12);
+    $("favSuggest").innerHTML = hist.length ? `<div class="label" style="margin:6px 0 8px">Kjøpt før, med produkt</div><div style="display:flex;flex-direction:column;gap:6px">${hist.map(([k,o])=>`<div class="fav" data-fav="${esc(k)}"><div class="fav-top"><div class="nm"><b>${esc(o.name)}</b><small>${esc(o.pname)}</small></div><button class="smallbtn" type="button" data-favact="pin">Gjør fast</button></div></div>`).join("")}</div>` : "";
+  }
+  if (setTab==="stores"){
+    const chains = Object.entries(S.chains||{}).sort((a,b)=>a[1].localeCompare(b[1],"nb"));
+    const sel = new Set(chosenStores());
+    $("storeList").innerHTML = chains.length
+      ? `<div class="storelist">${chains.map(([c,n])=>`<label for="st-${esc(c)}"><input type="checkbox" id="st-${esc(c)}" data-store="${esc(c)}"${sel.has(c)?" checked":""}> ${esc(n)}</label>`).join("")}</div>`
+      : `<p class="note">Kjedene dukker opp her etter første søk eller prisberegning.</p>`;
+    $("storesAll").hidden = !sel.size;
+  }
+}
+$("openSettings").addEventListener("click", ()=>openSettings());
+$("setClose").addEventListener("click", closeSettings);
+$("settings").addEventListener("click", e=>{ if (e.target.id==="settings") closeSettings(); });
+$("tabFav").addEventListener("click", ()=>{ setTab="fav"; renderSettings(); });
+$("tabStores").addEventListener("click", ()=>{ setTab="stores"; renderSettings(); });
+$("favForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const name = parseInput($("favName").value).name; $("favName").value = "";
+  if (!name) return;
+  const k = keyOf(name);
+  op({op:"fav_set", key:k, name, cat:guessCat(name)}, ()=>{ S.often[k] = {...(S.often[k]||{count:0, cat:guessCat(name)}), name, fast:true}; });
+  openPicker({favKey:k, name, ean:S.often[k]?.ean||"", pname:S.often[k]?.pname||""});
+});
+$("paneFav").addEventListener("click", e=>{
+  const b = e.target.closest("[data-favact]"); if (!b || b.tagName==="INPUT") return;
+  const k = b.closest("[data-fav]").dataset.fav, o = S.often?.[k]; if (!o) return;
+  const a = b.dataset.favact;
+  if (a==="pick") openPicker({favKey:k, name:o.name, ean:o.ean, pname:o.pname, q:o.q});
+  if (a==="add"){ addItem(o.name); b.textContent = "Lagt til"; setTimeout(()=>{ b.textContent = "+ Lista"; }, 1200); }
+  if (a==="remove") op({op:"fav_remove", key:k}, ()=>{ o.fast = false; });
+  if (a==="pin") op({op:"fav_set", key:k, name:o.name}, ()=>{ o.fast = true; });
+});
+$("paneFav").addEventListener("change", e=>{
+  if (e.target.dataset.favact!=="alias") return;
+  const k = e.target.closest("[data-fav]").dataset.fav, o = S.often?.[k]; if (!o) return;
+  const v = e.target.value;
+  op({op:"fav_set", key:k, name:o.name, aliases:v}, ()=>{ o.aliases = v.split(",").map(x=>x.trim()).filter(Boolean); });
+  e.target.blur();
+});
+$("paneStores").addEventListener("change", e=>{
+  if (!e.target.dataset.store) return;
+  const stores = [...document.querySelectorAll("#storeList [data-store]:checked")].map(x=>x.dataset.store);
+  op({op:"settings", stores}, ()=>{ S.settings = {stores}; });
+  prices = null;
+});
+$("storesAll").addEventListener("click", ()=>{ op({op:"settings", stores:[]}, ()=>{ S.settings = {stores:[]}; }); prices = null; });
 
 // ---------- Hendelser ----------
 function addItem(raw){

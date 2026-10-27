@@ -69,11 +69,13 @@ function dbHeaders(extra: Record<string, string> = {}) {
   if (DB_KEY.startsWith("eyJ")) h.Authorization = `Bearer ${DB_KEY}`;
   return h;
 }
-type State = { v: number; items: Item[]; often: Record<string, Often> };
+// settings.stores: kjeder som skal være med (tom = alle). chains: kjeder appen har sett, kode → navn
+type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string> };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
 type Meta = { kcat?: number; w?: number; wu?: string; q?: string };
 type Item = { id: string; name: string; qty: string; cat: string; ean: string; pname: string; done: boolean; ts: number } & Meta;
-type Often = { name: string; cat: string; count: number; last: number; ean?: string; pname?: string } & Meta;
+// fast = lagt inn på siden «Faste varer». aliases = andre navn som skal gi samme produkt
+type Often = { name: string; cat: string; count: number; last: number; ean?: string; pname?: string; fast?: boolean; aliases?: string[] } & Meta;
 
 async function load(): Promise<State> {
   const r = await fetch(`${DB_URL}/rest/v1/handlelista_state?id=eq.${ROW}&select=data`, { headers: dbHeaders() });
@@ -126,13 +128,18 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       const name = clean(o.name, 80);
       if (!name) return false;
       const k = key(name);
-      const known = s.often[k];
+      let fk = k, known = s.often[k];
+      // «margarin» kan være et annet navn på den faste varen «Smør»
+      if (!known?.ean) {
+        const hit = Object.entries(s.often).find(([, of]) => of.fast && of.ean && (of.aliases || []).some((a) => key(a) === k));
+        if (hit) { fk = hit[0]; known = hit[1]; }
+      }
       const dup = s.items.find((i) => key(i.name) === k && !i.done);
       if (dup) { if (o.qty) dup.qty = clean(o.qty, 20); return; }
       if (s.items.length >= 200) return false;
       const cat = known?.cat || clean(o.cat, 20) || "annet";
       s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, done: false, ts: Date.now() });
-      s.often[k] = { ...(known || {}), name, cat, count: (known?.count || 0) + 1, last: Date.now() };
+      s.often[fk] = { ...(known || {}), name: fk === k ? name : known!.name, cat, count: (known?.count || 0) + 1, last: Date.now() };
       const keys = Object.keys(s.often);
       if (keys.length > 300) {
         keys.sort((a, b) => (s.often[a].last || 0) - (s.often[b].last || 0)).slice(0, keys.length - 300).forEach((x) => delete s.often[x]);
@@ -157,6 +164,43 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       Object.assign(it, meta);
       const k = key(it.name);
       s.often[k] = { ...(s.often[k] || { name: it.name, cat: it.cat, count: 1, last: Date.now() }), ean: it.ean, pname: it.pname, ...meta };
+      return;
+    }
+    case "fav_set": {
+      const name = clean(o.name, 80);
+      if (!name) return false;
+      const k = o.key ? key(o.key) : key(name);
+      const cur: Often = s.often[k] || { name, cat: clean(o.cat, 20) || "annet", count: 0, last: Date.now() };
+      const upd: Often = { ...cur, name, fast: true };
+      if (o.cat) upd.cat = clean(o.cat, 20);
+      if ("aliases" in o) upd.aliases = String(o.aliases || "").split(",").map((a) => clean(a, 40)).filter(Boolean).slice(0, 10);
+      if ("ean" in o) {
+        upd.ean = /^\d{8,14}$/.test(String(o.ean || "")) ? String(o.ean) : "";
+        upd.pname = upd.ean ? clean(o.pname, 120) : "";
+        Object.assign(upd, upd.ean
+          ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined }
+          : { kcat: undefined, w: undefined, wu: undefined, q: undefined });
+      }
+      s.often[k] = upd;
+      // Varer som allerede står på lista uten produkt, får det med en gang
+      if (upd.ean) {
+        const names = new Set([k, ...(upd.aliases || []).map(key)]);
+        for (const it of s.items) if (!it.done && !it.ean && names.has(key(it.name))) {
+          Object.assign(it, { ean: upd.ean, pname: upd.pname, kcat: upd.kcat, w: upd.w, wu: upd.wu, q: upd.q });
+        }
+      }
+      if (Object.keys(s.often).length > 400) return false;
+      return;
+    }
+    case "fav_remove": { const of = s.often[key(o.key)]; if (of) of.fast = false; return; }
+    case "settings": {
+      const list = Array.isArray(o.stores) ? (o.stores as unknown[]).map((x) => clean(x, 40)).filter(Boolean).slice(0, 40) : [];
+      s.settings = { stores: list };
+      return;
+    }
+    case "chains": {
+      s.chains = { ...(s.chains || {}) };
+      for (const [c, n] of Object.entries((o.chains || {}) as Record<string, unknown>)) if (c) s.chains[clean(c, 40)] = clean(n, 60) || clean(c, 40);
       return;
     }
     case "remove": { const ids = new Set((o.ids as string[]) || []); s.items = s.items.filter((i) => !ids.has(i.id)); return; }
@@ -219,18 +263,54 @@ function normW(w: unknown, u: unknown): { v: number; u: string } | null {
 }
 const sizeLabel = (w: unknown, u: unknown) => (Number(w) ? `${w} ${u === "piece" ? "stk" : u || ""}`.trim() : "");
 
+// Husk kjedene vi ser, så de kan velges i innstillingene. Skriver bare når noe er nytt.
+async function recordChains(found: Map<string, string>) {
+  if (!found.size) return;
+  try {
+    const s = await load();
+    const fresh = [...found].filter(([c]) => !s.chains?.[c]);
+    if (fresh.length) await op({ op: "chains", chains: Object.fromEntries(fresh) });
+  } catch (e) { console.error("recordChains", e); }
+}
+const allowedFrom = (v: unknown): Set<string> | null => {
+  const arr = Array.isArray(v) ? v : typeof v === "string" && v ? v.split(",") : [];
+  const set = new Set(arr.map((x) => String(x).trim()).filter(Boolean));
+  return set.size ? set : null;
+};
+
 // ---------- Produktsøk ----------
 async function search(url: URL) {
   const q = (url.searchParams.get("q") || "").trim();
   if (q.length < 3) return json({ results: [] });
-  const params = new URLSearchParams({ search: q, size: "20", unique: "1", exclude_without_ean: "1" });
+  const allowed = allowedFrom(url.searchParams.get("stores"));
+  // Ikke slått sammen per strekkode, så vi ser hvilke kjeder som har varen
+  const params = new URLSearchParams({ search: q, size: "100", exclude_without_ean: "1" });
   const res = await kassal("/products?" + params);
   if (res.error) return json({ error: res.error }, res.status);
-  const results = (res.body.data || []).filter((p: Any) => p.ean).map((p: Any) => ({
-    ean: String(p.ean), name: p.name, brand: p.brand || p.vendor || "", image: p.image || "",
-    weight: p.weight ?? null, unit: p.weight_unit || "", price: num(p.current_price),
-    store: storeInfo(p.store).name, kcat: deepestCat(p.category) ?? null,
-  }));
+  const byEan = new Map<string, Any>();
+  const seen = new Map<string, string>();
+  for (const p of res.body.data || []) {
+    if (!p?.ean) continue;
+    const st = storeInfo(p.store);
+    if (st.code) seen.set(st.code, st.name);
+    const ok = !allowed || allowed.has(st.code);
+    const price = num(p.current_price);
+    let e = byEan.get(String(p.ean));
+    if (!e) {
+      e = {
+        ean: String(p.ean), name: p.name, brand: p.brand || p.vendor || "", image: p.image || "",
+        weight: p.weight ?? null, unit: p.weight_unit || "", price: null as number | null, stores: [] as string[],
+        kcat: deepestCat(p.category) ?? null,
+      };
+      byEan.set(e.ean, e);
+    }
+    if (!e.image && p.image) e.image = p.image;
+    if (e.kcat == null) e.kcat = deepestCat(p.category) ?? null;
+    if (ok && st.name && !e.stores.includes(st.name)) e.stores.push(st.name);
+    if (ok && price != null && (e.price == null || price < e.price)) e.price = price;
+  }
+  await recordChains(seen);
+  const results = [...byEan.values()].filter((e) => e.stores.length).slice(0, 25);
   return json({ results });
 }
 
@@ -330,7 +410,8 @@ async function findSimilar(chain: Store, want: Want): Promise<Store | null | "li
 }
 
 let loggedShape = false;
-async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolean }) {
+async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolean; stores?: string[] }) {
+  const allowed = allowedFrom(body.stores);
   const wants: Want[] = (body.items?.length ? body.items : (body.eans || []).map((e) => ({ ean: String(e) })))
     .filter((w) => /^\d{8,14}$/.test(String(w?.ean)))
     .slice(0, 100);
@@ -365,6 +446,17 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
     }));
   }
 
+  // Husk alle kjeder vi så, og fjern dem som ikke er valgt i innstillingene
+  const seenChains = new Map<string, string>();
+  for (const it of byEan.values()) for (const st of it.stores) seenChains.set(st.code, st.name);
+  await recordChains(seenChains);
+  if (allowed) {
+    for (const [ean, it] of byEan) {
+      it.stores = it.stores.filter((st) => allowed.has(st.code));
+      if (!it.stores.length && !body.similar) byEan.delete(ean);
+    }
+  }
+
   // 3) Lignende varer der kjeden mangler akkurat produktet
   let subs = 0, limited = false;
   if (body.similar) {
@@ -374,7 +466,12 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
       const o = seen.get(s.code); seen.set(s.code, { s: o?.s || s, n: (o?.n || 0) + 1 });
     }
     const need = Math.max(1, Math.ceil(uniq.length * 0.4));
-    const chains = [...seen.values()].filter((c) => c.n >= need).sort((a, b) => b.n - a.n).slice(0, 8).map((c) => c.s);
+    let chains = [...seen.values()].filter((c) => c.n >= need).sort((a, b) => b.n - a.n).slice(0, 8).map((c) => c.s);
+    // Er kjedene valgt i innstillingene, sjekker vi akkurat dem
+    if (allowed) {
+      const names = (await load()).chains || {};
+      chains = [...allowed].slice(0, 10).map((code) => ({ code, name: seenChains.get(code) || names[code] || code, price: 0 }));
+    }
 
     const jobs: { w: Want; chain: Store; key: string }[] = [];
     for (const w of uniq) {
@@ -406,5 +503,7 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
     if (calls >= MAX_CALLS) limited = true;
   }
   await cachePut(toCache);
-  return json({ items: [...byEan.values()], subs, partial: limited, fetched: new Date().toISOString() });
+  const asked = new Set(uniq.map((w) => w.ean));
+  const items = [...byEan.values()].filter((it) => it.stores.length && asked.has(it.ean));
+  return json({ items, subs, partial: limited, fetched: new Date().toISOString() });
 }
