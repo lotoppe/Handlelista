@@ -369,7 +369,7 @@ async function doSearch(){
     box._results = r.results;
   }catch(e){
     if (seq !== searchSeq) return;
-    box.innerHTML = `<p class="note" style="color:var(--warn)">${e.code==="mangler_nokkel"?"Kassalapp-nøkkelen er ikke satt opp ennå.":e.code==="for_mange_kall"?"For mange søk akkurat nå. Vent litt.":"Søket feilet. Prøv igjen."}</p>`;
+    box.innerHTML = `<p class="note" style="color:var(--warn)">${e.code==="mangler_nokkel"?"Kassalapp-nøkkelen er ikke satt opp ennå.":e.code==="for_mange_kall"?"For mange søk akkurat nå. Vent litt.":e.code==="ugyldig_nokkel"?"Kassalapp godtar ikke nøkkelen. Sjekk at hele nøkkelen er limt inn i Supabase.":"Kassalapp svarte ikke. Prøv igjen om litt."}</p>`;
   }
 }
 $("pickSearch").addEventListener("input", ()=>{ clearTimeout(searchT); searchT = setTimeout(doSearch, 400); });

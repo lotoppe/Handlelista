@@ -34,6 +34,9 @@ function secret(exact: string[], pattern: RegExp): string | undefined {
   const hit = Object.keys(env).find((k) => pattern.test(k) && !/^SUPABASE_/i.test(k));
   return hit ? env[hit].trim() : undefined;
 }
+function secretName(pattern: RegExp): string | undefined {
+  return Object.keys(Deno.env.toObject()).find((k) => pattern.test(k) && !/^SUPABASE_/i.test(k));
+}
 const getKassalKey = () => secret(["KASSAL_KEY"], /kassal/i);
 const getPassword = () => secret(["APP_PASSWORD"], /passord|password|kode/i);
 
@@ -157,12 +160,17 @@ function apply(s: State, o: Record<string, unknown>): void | false {
 
 // ---------- Kassalapp ----------
 async function kassal(path: string, init: RequestInit = {}) {
-  const k = getKassalKey();
-  if (!k) return { error: "mangler_nokkel", status: 503 };
+  // Tåler at nøkkelen er limt inn med «Bearer » foran eller med anførselstegn
+  const k = getKassalKey()?.replace(/^bearer\s+/i, "").replace(/^["']|["']$/g, "").trim();
+  if (!k) { console.error("Kassalapp: fant ingen nøkkel. Navn funnet:", secretName(/kassal/i) ?? "ingen"); return { error: "mangler_nokkel", status: 503 }; }
   const r = await fetch(KASSAL + path, {
     ...init,
-    headers: { Authorization: `Bearer ${k}`, Accept: "application/json", "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${k}`, Accept: "application/json", "Content-Type": "application/json", "User-Agent": "Handlelista/1.0" },
   });
+  if (!r.ok) {
+    const body = (await r.text()).slice(0, 300);
+    console.error("Kassalapp", r.status, path.split("?")[0], "nøkkelnavn:", secretName(/kassal/i) ?? "KASSAL_KEY", "lengde:", k.length, "svar:", body);
+  }
   if (r.status === 429) return { error: "for_mange_kall", status: 429 };
   if (r.status === 401 || r.status === 403) return { error: "ugyldig_nokkel", status: 502 };
   if (!r.ok) return { error: "kassalapp_feil", status: 502 };
