@@ -193,18 +193,60 @@ async function search(url: URL) {
   return json({ results });
 }
 
+type Store = { code: string; name: string; price: number; checked?: string };
+// deno-lint-ignore no-explicit-any
+function storeOf(x: any): Store | null {
+  const price = num(x?.current_price ?? x?.price);
+  if (price == null) return null;
+  const st = x?.store;
+  const name = typeof st === "string" ? x?.name || st : st?.name || "";
+  const code = typeof st === "string" ? st : st?.code || st?.name || name;
+  return { code: String(code), name: String(name || code), price, checked: x?.last_checked || x?.current_price?.date };
+}
+// Én kjede kan ha flere treff: behold billigste
+function bestPerChain(list: Store[]): Store[] {
+  const m = new Map<string, Store>();
+  for (const s of list) { const o = m.get(s.code); if (!o || s.price < o.price) m.set(s.code, s); }
+  return [...m.values()];
+}
+
+async function pricesForEan(ean: string): Promise<{ name: string; stores: Store[] }> {
+  const res = await kassal("/products/ean/" + ean);
+  if (res.error) return { name: "", stores: [] };
+  const d = res.body?.data ?? {};
+  // deno-lint-ignore no-explicit-any
+  const products: any[] = Array.isArray(d) ? d : d.products || [];
+  return { name: d.name || products[0]?.name || "", stores: bestPerChain(products.map(storeOf).filter(Boolean) as Store[]) };
+}
+
+let loggedShape = false;
 async function prices(body: { eans?: unknown[] }) {
   const list = [...new Set((body.eans || []).map(String).filter((e) => /^\d{8,14}$/.test(e)))].slice(0, 100);
   if (!list.length) return json({ items: [] });
+  const byEan = new Map<string, { ean: string; name: string; stores: Store[] }>();
+
   const res = await kassal("/products/prices-bulk", { method: "POST", body: JSON.stringify({ eans: list, days: 1 }) });
-  if (res.error) return json({ error: res.error }, res.status);
-  // deno-lint-ignore no-explicit-any
-  const items = (res.body.data || []).map((it: any) => ({
-    ean: String(it.ean), name: it.name,
+  if (res.error === "for_mange_kall") return json({ error: res.error }, 429);
+  if (!res.error) {
+    if (!loggedShape) { loggedShape = true; console.log("prices-bulk form:", JSON.stringify(res.body).slice(0, 600)); }
+    const data = res.body?.data;
     // deno-lint-ignore no-explicit-any
-    stores: (it.stores || []).filter((s: any) => typeof s.current_price === "number")
-      // deno-lint-ignore no-explicit-any
-      .map((s: any) => ({ code: s.store, name: s.name, price: s.current_price, checked: s.last_checked })),
-  }));
-  return json({ items, fetched: new Date().toISOString() });
+    const arr: any[] = Array.isArray(data) ? data : data && typeof data === "object" ? Object.values(data) : [];
+    for (const it of arr) {
+      const ean = String(it?.ean ?? "");
+      const stores = bestPerChain(((it?.stores || it?.prices || []) as unknown[]).map(storeOf).filter(Boolean) as Store[]);
+      if (ean && stores.length) byEan.set(ean, { ean, name: it.name || "", stores });
+    }
+  }
+
+  // Det samlesvaret ikke dekket: hent per strekkode, fem om gangen
+  const missing = list.filter((e) => !byEan.has(e));
+  for (let i = 0; i < missing.length; i += 5) {
+    await Promise.all(missing.slice(i, i + 5).map(async (ean) => {
+      const r = await pricesForEan(ean);
+      if (r.stores.length) byEan.set(ean, { ean, ...r });
+      else console.log("Ingen priser for", ean);
+    }));
+  }
+  return json({ items: [...byEan.values()], fetched: new Date().toISOString() });
 }
