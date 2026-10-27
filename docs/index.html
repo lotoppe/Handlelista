@@ -218,8 +218,11 @@ const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/
 
 // ---------- API ----------
 let code = store.get("hl-kode") || "";
+// ---- Fyll inn: Supabase → Project Settings → Data API → Project URL ----
+const SUPABASE_URL = "https://DITT-PROSJEKT.supabase.co";
+// -------------------------------------------------------------------------
 async function api(path, opts={}){
-  const r = await fetch(path, {...opts, headers:{"Content-Type":"application/json","x-kode":code}});
+  const r = await fetch(SUPABASE_URL + "/functions/v1/handlelista" + path, {...opts, headers:{"Content-Type":"application/json","x-kode":code}});
   if (r.status === 401){ showLogin(true); throw {code:"login"}; }
   const body = await r.json().catch(()=>({}));
   if (!r.ok) throw {code: body.error || "feil", status:r.status};

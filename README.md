@@ -1,27 +1,38 @@
 # Handlelista
 
 Felles handleliste med totalpris per butikkjede, med priser fra Kassalapp.
-Kjører gratis som én Cloudflare Worker: appen (`public/index.html`), den felles lista (Durable Object) og en mellomserver som holder Kassalapp-nøkkelen hemmelig (`src/worker.js`).
 
-## Oppsett (ca. 15 minutter, én gang)
+- **Appen** (`docs/index.html`) ligger på GitHub Pages.
+- **Lista og Kassalapp-nøkkelen** ligger i Supabase: én tabell og én edge-funksjon (`supabase/`).
 
-1. **Kassalapp-nøkkel**: Logg inn på https://kassal.app/api og lag en API-nøkkel. Ta vare på den.
-2. **Cloudflare-konto**: Opprett gratis konto på https://dash.cloudflare.com.
-3. **Koble repoet**: I Cloudflare: *Workers & Pages → Create → Import a repository*, velg dette repoet. Standardinnstillingene holder (bygg-kommandoen er tom, deploy-kommandoen er `npx wrangler deploy`). Trykk *Deploy*.
-4. **Hemmeligheter**: Åpne workeren *handlelista → Settings → Variables and Secrets* og legg til to av typen *Secret*:
+## Oppsett (én gang)
+
+### 1. Kassalapp-nøkkel
+Logg inn på https://kassal.app/api og lag en API-nøkkel.
+
+### 2. Supabase
+Bruk gjerne et nytt prosjekt, så holdes handlelista adskilt fra bryllupssiden (gratisplanen tillater to prosjekter).
+
+1. **Tabell:** Åpne *SQL Editor → New query*, lim inn innholdet i `supabase/setup.sql` og trykk *Run*.
+2. **Funksjon:** Åpne *Edge Functions → Deploy a new function → Via Editor*. Gi den navnet `handlelista` (nøyaktig), lim inn hele `supabase/functions/handlelista/index.ts` og trykk *Deploy*.
+3. **Slå av JWT-sjekk:** Åpne funksjonen, gå til *Details* og slå av **Verify JWT with legacy secret** (eller «Enforce JWT verification»). Appen beskyttes av koden deres i stedet. Trykk *Save*.
+4. **Hemmeligheter:** Åpne *Edge Functions → Secrets* og legg til:
    - `KASSAL_KEY`: Kassalapp-nøkkelen
-   - `APP_PASSWORD`: en kode dere velger selv, som beskytter lista
-5. **Åpne appen**: Adressen står øverst på workeren (`handlelista.<navn>.workers.dev`). Skriv inn koden. På iPhone: Del → *Legg til på Hjem-skjerm*, så blir den en app-ikon.
+   - `APP_PASSWORD`: en kode dere velger selv
+5. **Prosjekt-URL:** Kopier *Project URL* fra *Project Settings → Data API*. Den ser ut som `https://abcdefgh.supabase.co`.
 
-Hver gang noe pushes til repoet, publiserer Cloudflare automatisk på nytt.
+### 3. Appen
+1. Åpne `docs/index.html` i GitHub, trykk blyanten og bytt ut `https://DITT-PROSJEKT.supabase.co` med prosjekt-URL-en din. Trykk *Commit changes*.
+2. Gå til repoets *Settings → Pages*. Under *Build and deployment* velger du *Deploy from a branch*, deretter `main` og mappen `/docs`. Trykk *Save*.
+3. Etter et minutt eller to ligger appen på `https://lotoppe.github.io/handlelista/`. Åpne den, skriv koden og legg den på Hjem-skjermen (Del → *Legg til på Hjem-skjerm*).
 
 ## Bruk
 
 - Skriv varer nederst, gjerne flere med komma: `2 melk, brød, bananer`.
-- Trykk **velg** på en vare og plukk produktet dere kjøper. Valget huskes, så neste gang varen legges til er den allerede koblet.
+- Trykk **velg** på en vare og plukk produktet dere kjøper. Valget huskes til neste gang.
 - Trykk **Hva koster lista?** for totalpris per kjede. Antall (`2`, `3 stk`) ganges inn; vekt og volum teller som én.
 - Prisene er ordinære hyllepriser fra Kassalapp. Medlemspriser (Coop, Trumf) er ikke med.
 
-## Gratisgrenser
+## Godt å vite
 
-Cloudflare Workers gratis: 100 000 forespørsler per dag. Appen spør etter endringer hvert 5. sekund bare mens den er åpen, så vanlig bruk ligger langt under. Prisoppslag caches i 30 minutter.
+Gratisprosjekter i Supabase settes på pause etter en uke uten bruk. Bruker dere lista jevnlig, skjer ikke det. Skjer det likevel, trykker du *Restore* i Supabase.
