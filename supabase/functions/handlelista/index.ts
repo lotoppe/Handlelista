@@ -182,7 +182,7 @@ const num = (v: any) => (typeof v === "number" ? v : v && typeof v.price === "nu
 async function search(url: URL) {
   const q = (url.searchParams.get("q") || "").trim();
   if (q.length < 3) return json({ results: [] });
-  const params = new URLSearchParams({ search: q, size: "20", unique: "true", exclude_without_ean: "true" });
+  const params = new URLSearchParams({ search: q, size: "20", unique: "1", exclude_without_ean: "1" });
   const res = await kassal("/products?" + params);
   if (res.error) return json({ error: res.error }, res.status);
   // deno-lint-ignore no-explicit-any
