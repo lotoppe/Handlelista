@@ -32,6 +32,9 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^.*?\/handlelista/, "") || "/";
 
+  // Holder prosjektet våkent (kalles av GitHub Actions). Avslører ingenting.
+  if (path === "/api/ping") { await load(); return json({ ok: true }); }
+
   const pw = Deno.env.get("APP_PASSWORD");
   if (pw && req.headers.get("x-kode") !== pw) return json({ error: "feil_kode" }, 401);
 

@@ -33,6 +33,6 @@ Bruk gjerne et nytt prosjekt, så holdes handlelista adskilt fra bryllupssiden (
 - Trykk **Hva koster lista?** for totalpris per kjede. Antall (`2`, `3 stk`) ganges inn; vekt og volum teller som én.
 - Prisene er ordinære hyllepriser fra Kassalapp. Medlemspriser (Coop, Trumf) er ikke med.
 
-## Godt å vite
+## Pause i Supabase
 
-Gratisprosjekter i Supabase settes på pause etter en uke uten bruk. Bruker dere lista jevnlig, skjer ikke det. Skjer det likevel, trykker du *Restore* i Supabase.
+Gratisprosjekter i Supabase settes på pause etter en uke uten bruk. GitHub Actions-jobben `Hold Supabase våken` pinger derfor funksjonen hver tredje dag. Den starter av seg selv når prosjekt-URL-en er lagt inn i `docs/index.html`. Du kan også kjøre den manuelt under *Actions*.

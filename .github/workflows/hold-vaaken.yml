@@ -1,0 +1,17 @@
+# Supabase setter gratisprosjekter på pause etter en uke uten bruk.
+# Denne pinger handlelista hver tredje dag, så det aldri skjer.
+name: Hold Supabase våken
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping
+        run: |
+          URL=$(grep -oE 'const SUPABASE_URL = "[^"]+"' docs/index.html | cut -d'"' -f2)
+          if [[ "$URL" == *DITT-PROSJEKT* ]]; then echo "Prosjekt-URL ikke satt ennå"; exit 0; fi
+          curl -fsS --retry 3 "$URL/functions/v1/handlelista/api/ping"
