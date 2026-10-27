@@ -36,7 +36,8 @@ Deno.serve(async (req) => {
   if (path === "/api/ping") { await load(); return json({ ok: true }); }
 
   const pw = Deno.env.get("APP_PASSWORD");
-  if (pw && req.headers.get("x-kode") !== pw) return json({ error: "feil_kode" }, 401);
+  // Uten APP_PASSWORD er lista låst for alle
+  if (!pw || req.headers.get("x-kode") !== pw) return json({ error: "feil_kode" }, 401);
 
   try {
     if (path === "/api/state" && req.method === "GET") return state(url);
