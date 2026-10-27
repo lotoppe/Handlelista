@@ -5,8 +5,8 @@
 //   POST /api/prices  dagens priser per kjede for en liste EAN-er
 //
 // Hemmeligheter (Edge Functions → Secrets):
-//   KASSAL_KEY    – API-nøkkel fra kassal.app/api
-//   APP_PASSWORD  – koden dere skriver inn i appen
+//   KASSAL_KEY    – API-nøkkel fra kassal.app/api (navn med «kassal» virker også)
+//   APP_PASSWORD  – koden dere skriver inn i appen (navn med «passord» virker også)
 // SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY settes automatisk av Supabase.
 
 const KASSAL = Deno.env.get("KASSAL_BASE") || "https://kassal.app/api/v1";
@@ -27,6 +27,16 @@ function json(data: unknown, status = 200) {
   });
 }
 
+// Finner hemmeligheten selv om den har et annet navn (f.eks. «Kassalapp api», «Passord»)
+function secret(exact: string[], pattern: RegExp): string | undefined {
+  for (const n of exact) { const v = Deno.env.get(n); if (v) return v.trim(); }
+  const env = Deno.env.toObject();
+  const hit = Object.keys(env).find((k) => pattern.test(k) && !/^SUPABASE_/i.test(k));
+  return hit ? env[hit].trim() : undefined;
+}
+const getKassalKey = () => secret(["KASSAL_KEY"], /kassal/i);
+const getPassword = () => secret(["APP_PASSWORD"], /passord|password|kode/i);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
@@ -35,7 +45,7 @@ Deno.serve(async (req) => {
   // Holder prosjektet våkent (kalles av GitHub Actions). Avslører ingenting.
   if (path === "/api/ping") { await load(); return json({ ok: true }); }
 
-  const pw = Deno.env.get("APP_PASSWORD");
+  const pw = getPassword();
   // Uten APP_PASSWORD er lista låst for alle
   if (!pw || req.headers.get("x-kode") !== pw) return json({ error: "feil_kode" }, 401);
 
@@ -147,7 +157,7 @@ function apply(s: State, o: Record<string, unknown>): void | false {
 
 // ---------- Kassalapp ----------
 async function kassal(path: string, init: RequestInit = {}) {
-  const k = Deno.env.get("KASSAL_KEY");
+  const k = getKassalKey();
   if (!k) return { error: "mangler_nokkel", status: 503 };
   const r = await fetch(KASSAL + path, {
     ...init,
