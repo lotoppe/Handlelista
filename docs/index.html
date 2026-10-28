@@ -2,6 +2,7 @@
 <html lang="no">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -510,6 +511,25 @@ function parseInput(raw){
 const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/i); return m ? Math.max(1, +m[1]) : 1; };
 
 // ---------- API ----------
+// ---------- Automatisk oppdatering ----------
+// Bump APP_VERSION ved hver endring. Appen sjekker om en nyere versjon er publisert og laster den inn,
+// så Hjem-skjerm-appen på iPhone ikke blir hengende på en gammel kopi.
+const APP_VERSION = "2026-10-28-2";
+async function checkForUpdate(){
+  try{
+    const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache:"no-store" });
+    const m = (await r.text()).match(/const APP_VERSION = "([^"]+)"/);
+    if (m && m[1] !== APP_VERSION){
+      const k = "hl-reloaded-" + m[1];
+      if (store.get(k)) return;        // unngå evig omlasting hvis noe mellomlagrer
+      store.set(k, "1");
+      location.reload();
+    }
+  }catch(e){}
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", ()=>{ if (document.visibilityState==="visible") checkForUpdate(); });
+
 let code = store.get("hl-kode") || "";
 // Delt lenke med kode (#k=…): logg inn automatisk. Koden blir stående i adressen,
 // så den følger med når lenken legges på Hjem-skjermen (den har egen lagring på iPhone).
