@@ -514,7 +514,7 @@ const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/
 // ---------- Automatisk oppdatering ----------
 // Bump APP_VERSION ved hver endring. Appen sjekker om en nyere versjon er publisert og laster den inn,
 // så Hjem-skjerm-appen på iPhone ikke blir hengende på en gammel kopi.
-const APP_VERSION = "2026-10-28-2";
+const APP_VERSION = "2026-10-28-3";
 async function checkForUpdate(){
   try{
     const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache:"no-store" });
@@ -661,8 +661,9 @@ function renderTotals(){
     const st = r.lines[it.id];
     const price = st ? kr(st.price * qtyN(it.qty)) : "";
     let status, cls = "";
-    if (!st){ status = "Mangler – velg en vare her"; cls = "miss"; }
-    else if (st.alt) status = "Valgt: " + esc(st.alt.name);
+    if (!st && it.alts?.[r.code]){ status = `Valgt: ${esc(it.alts[r.code].pname)} – fant ikke prisen. Velg på nytt eller prøv en annen vare.`; cls = "miss"; }
+    else if (!st){ status = "Mangler – velg en vare her"; cls = "miss"; }
+    else if (st.alt) status = "Valgt: " + esc(st.alt.name) + (st.alt.old ? " (pris fra da den ble valgt)" : "");
     else if (st.sub) status = "Lignende: " + esc(st.sub.name) + (st.sub.actual!=null ? ` (${kr(st.sub.actual)}, regnet om til ${esc(st.sub.per)})` : "");
     else status = "Samme vare";
     const btn = it.alts?.[r.code]
@@ -762,7 +763,7 @@ $("pickResults").addEventListener("click", e=>{
   const meta = {kcat:p.kcat||0, w:p.weight||0, wu:p.unit||"", q:$("pickSearch").value.trim(), img:p.image||""};
   if (pickItem.altFor){
     const id = pickItem.altFor, store = pickItem.store;
-    op({op:"alt_set", id, store, ean:p.ean, pname, img:p.image||""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){ it.alts = {...(it.alts||{}), [store]:{ean:p.ean, pname}}; } }).then(calc);
+    op({op:"alt_set", id, store, ean:p.ean, pname, img:p.image||"", price:p.price}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){ it.alts = {...(it.alts||{}), [store]:{ean:p.ean, pname}}; } }).then(calc);
     closePicker(); return;
   }
   if (pickItem.favKey){

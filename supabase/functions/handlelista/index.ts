@@ -75,7 +75,8 @@ type Saved = { name: string; ts: number; items: Omit<Item, "id" | "done" | "ts">
 type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved>; current?: { id: string; name: string } | null };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
 // alts: produkt dere har valgt selv i en bestemt kjede, kjedekode → { ean, pname }
-type Alt = { ean: string; pname: string; img?: string };
+// price/pts: prisen som ble vist da varen ble valgt, brukes hvis Kassalapp ikke har dagens pris
+type Alt = { ean: string; pname: string; img?: string; price?: number; pts?: number };
 type Meta = { kcat?: number; w?: number; wu?: string; q?: string; img?: string; alts?: Record<string, Alt> };
 // Produktbilde fra Kassalapp (bare https-adresser)
 const imgOf = (v: unknown) => (/^https:\/\//.test(String(v || "")) ? String(v).slice(0, 500) : undefined);
@@ -182,7 +183,8 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       if (o.op === "alt_set") {
         const ean = String(o.ean || "");
         if (!/^\d{8,14}$/.test(ean)) return false;
-        alts[store] = { ean, pname: clean(o.pname, 120), img: imgOf(o.img) };
+        const price = Number(o.price);
+        alts[store] = { ean, pname: clean(o.pname, 120), img: imgOf(o.img), ...(price > 0 ? { price, pts: Date.now() } : {}) };
       } else delete alts[store];
       it.alts = alts;
       const k = key(it.name);
@@ -403,7 +405,7 @@ async function cachePut(rows: { key: string; data: unknown; hours: number }[]) {
 }
 
 // ---------- Priser ----------
-type Store = { code: string; name: string; price: number; checked?: string; sub?: { name: string; size: string; actual?: number; per?: string }; alt?: { name: string } };
+type Store = { code: string; name: string; price: number; checked?: string; sub?: { name: string; size: string; actual?: number; per?: string }; alt?: { name: string; old?: boolean } };
 type Want = { ean: string; name?: string; q?: string } & Meta;
 
 function storeOf(x: Any): Store | null {
@@ -524,13 +526,32 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
     }));
   }
 
-  // Eget valg i en kjede går foran både eksakt pris og lignende vare
+  // Eget valg i en kjede går foran både eksakt pris og lignende vare.
+  // Mangler samlesvaret prisen i akkurat den kjeden, slår vi opp varen alene, og til slutt brukes
+  // prisen som ble vist da varen ble valgt.
+  let chainNames: Record<string, string> | null = null;
   for (const w of uniq) for (const [code, a] of Object.entries(w.alts || {})) {
-    const st = byEan.get(String(a?.ean))?.stores.find((x) => x.code === code);
-    if (!st) continue;
+    const altEan = String(a?.ean || "");
+    let st = byEan.get(altEan)?.stores.find((x) => x.code === code);
+    let old = false;
+    if (!st) {
+      const key = "ean:" + altEan;
+      let r = cached.get(key);
+      if (!r || r.none || !r.stores?.some((x: Store) => x.code === code)) {
+        r = await lookupEan(altEan);
+        toCache.push({ key, data: r, hours: 6 });
+      }
+      st = r.stores?.find((x: Store) => x.code === code);
+    }
+    if (!st && typeof a?.price === "number") {
+      chainNames ??= (await load()).chains || {};
+      st = { code, name: chainNames[code] || code, price: a.price };
+      old = true;
+    }
+    if (!st) { console.log("Fant ikke pris for eget valg", altEan, "i", code); continue; }
     const entry = byEan.get(w.ean) || { ean: w.ean, name: w.name || "", stores: [] };
     entry.stores = entry.stores.filter((x) => x.code !== code);
-    entry.stores.push({ ...st, alt: { name: a.pname || "" } });
+    entry.stores.push({ ...st, alt: { name: a.pname || "", ...(old ? { old: true } : {}) } });
     byEan.set(w.ean, entry);
   }
 
