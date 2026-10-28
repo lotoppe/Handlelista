@@ -72,7 +72,9 @@ function dbHeaders(extra: Record<string, string> = {}) {
 // settings.stores: kjeder som skal være med (tom = alle). chains: kjeder appen har sett, kode → navn
 type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string> };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
-type Meta = { kcat?: number; w?: number; wu?: string; q?: string };
+type Meta = { kcat?: number; w?: number; wu?: string; q?: string; img?: string };
+// Produktbilde fra Kassalapp (bare https-adresser)
+const imgOf = (v: unknown) => (/^https:\/\//.test(String(v || "")) ? String(v).slice(0, 500) : undefined);
 type Item = { id: string; name: string; qty: string; cat: string; ean: string; pname: string; done: boolean; ts: number } & Meta;
 // fast = lagt inn på siden «Faste varer». aliases = andre navn som skal gi samme produkt
 type Often = { name: string; cat: string; count: number; last: number; ean?: string; pname?: string; fast?: boolean; aliases?: string[] } & Meta;
@@ -138,7 +140,7 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       if (dup) { if (o.qty) dup.qty = clean(o.qty, 20); return; }
       if (s.items.length >= 200) return false;
       const cat = known?.cat || clean(o.cat, 20) || "annet";
-      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, done: false, ts: Date.now() });
+      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, img: known?.img, done: false, ts: Date.now() });
       s.often[fk] = { ...(known || {}), name: fk === k ? name : known!.name, cat, count: (known?.count || 0) + 1, last: Date.now() };
       const keys = Object.keys(s.often);
       if (keys.length > 300) {
@@ -159,8 +161,8 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       it.ean = /^\d{8,14}$/.test(String(o.ean || "")) ? String(o.ean) : "";
       it.pname = it.ean ? clean(o.pname, 120) : "";
       const meta: Meta = it.ean
-        ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined }
-        : { kcat: undefined, w: undefined, wu: undefined, q: undefined };
+        ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined, img: imgOf(o.img) }
+        : { kcat: undefined, w: undefined, wu: undefined, q: undefined, img: undefined };
       Object.assign(it, meta);
       const k = key(it.name);
       s.often[k] = { ...(s.often[k] || { name: it.name, cat: it.cat, count: 1, last: Date.now() }), ean: it.ean, pname: it.pname, ...meta };
@@ -178,15 +180,15 @@ function apply(s: State, o: Record<string, unknown>): void | false {
         upd.ean = /^\d{8,14}$/.test(String(o.ean || "")) ? String(o.ean) : "";
         upd.pname = upd.ean ? clean(o.pname, 120) : "";
         Object.assign(upd, upd.ean
-          ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined }
-          : { kcat: undefined, w: undefined, wu: undefined, q: undefined });
+          ? { kcat: Number(o.kcat) || undefined, w: Number(o.w) || undefined, wu: clean(o.wu, 10) || undefined, q: clean(o.q, 60) || undefined, img: imgOf(o.img) }
+          : { kcat: undefined, w: undefined, wu: undefined, q: undefined, img: undefined });
       }
       s.often[k] = upd;
       // Varer som allerede står på lista uten produkt, får det med en gang
       if (upd.ean) {
         const names = new Set([k, ...(upd.aliases || []).map(key)]);
         for (const it of s.items) if (!it.done && !it.ean && names.has(key(it.name))) {
-          Object.assign(it, { ean: upd.ean, pname: upd.pname, kcat: upd.kcat, w: upd.w, wu: upd.wu, q: upd.q });
+          Object.assign(it, { ean: upd.ean, pname: upd.pname, kcat: upd.kcat, w: upd.w, wu: upd.wu, q: upd.q, img: upd.img });
         }
       }
       if (Object.keys(s.often).length > 400) return false;
