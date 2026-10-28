@@ -127,6 +127,15 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
 .store-row ul{margin:6px 0 2px;padding-left:16px;display:flex;flex-direction:column;gap:3px}
 .store-row li b{text-transform:none;letter-spacing:0;font-size:.74rem}
 .toggle{display:flex;align-items:center;gap:10px;font-size:.74rem;cursor:pointer;color:#444}
+.lines{list-style:none;margin:8px 0 4px;padding:0;display:flex;flex-direction:column}
+.lines li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 0;border-top:1px dotted #cfcfcf;align-items:baseline}
+.lines .ln{min-width:0}
+.lines .ln b{text-transform:none;letter-spacing:0;font-size:.8rem}
+.lines .ln small{display:block;font-size:.7rem;color:#666;overflow-wrap:anywhere}
+.lines .lp{font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums}
+.lines .lb{grid-column:1/-1;display:flex;gap:12px}
+.lines li.miss .ln small{color:var(--red);font-weight:700}
+.linkbtn{border:0;background:none;padding:2px 0;font-family:var(--mono);font-size:.74rem;font-weight:700;color:var(--ink);text-decoration:underline;cursor:pointer}
 .toggle input{width:18px;height:18px;accent-color:var(--ink);margin:0;flex:none}
 
 /* Gule lapper med forslag */
@@ -602,6 +611,8 @@ function itemHTML(it){
 }
 
 // ---------- Totalpris ----------
+// Kjeden som er åpnet i kvitteringen (for å se og velge varer per butikk)
+let openChain = null;
 function renderTotals(){
   const body = $("totalsBody");
   const open = (S.items||[]).filter(i=>!i.done);
@@ -610,34 +621,75 @@ function renderTotals(){
   const unlinkedNote = unlinked.length ? `<p class="note">${unlinked.length} ${unlinked.length===1?"vare":"varer"} uten valgt produkt er ikke med: ${unlinked.slice(0,4).map(i=>`<button type="button" data-pickid="${i.id}">${esc(i.name)}</button>`).join(", ")}${unlinked.length>4?" …":""}</p>` : "";
   if (!prices){ body.innerHTML = unlinkedNote; return; }
 
+  // Én rad per kjede, med status for hver vare: funnet, eget valg, lignende eller mangler
   const chains = {};
+  const ensure = (code, name) => chains[code] ||= {code, name, sum:0, have:0, lines:{}};
+  for (const c of chosenStores()) ensure(c, S.chains?.[c] || c);
   for (const it of linked){
     const p = prices.byEan[it.ean]; if (!p) continue;
-    for (const s of p.stores){
-      const c = chains[s.code] ||= {name:s.name, sum:0, have:0, subs:[]};
-      c.sum += s.price * qtyN(it.qty); c.have++;
-      if (s.sub) c.subs.push({item:it.name, ...s.sub, price:s.price});
+    for (const st of p.stores){
+      const c = ensure(st.code, st.name);
+      c.sum += st.price * qtyN(it.qty); c.have++;
+      c.lines[it.id] = st;
     }
   }
   const total = linked.length;
-  const rows = Object.values(chains).sort((a,b)=>(b.have-a.have)||(a.sum-b.sum)).slice(0,8);
+  const rows = Object.values(chains).sort((a,b)=>(b.have-a.have)||(a.sum-b.sum)).slice(0,10);
   if (!rows.length){ body.innerHTML = `<p class="note">Fant ingen priser for de valgte produktene.</p>${unlinkedNote}`; return; }
   const bestFull = rows.find(r=>r.have===total);
-  body.innerHTML = rows.map(r=>`<div class="store-row${r===bestFull?" best":""}">
-      <b>${esc(r.name)}</b><span class="sum">${kr(r.sum)} kr</span>
-      <small>${r.have===total?(r===bestFull?"Billigst for hele lista":"Har alle varene"):`Mangler pris på ${total-r.have} av ${total}`}</small>
-      ${r.subs.length?`<details><summary>${r.subs.length} ${r.subs.length===1?"lignende vare":"lignende varer"} ›</summary><ul>${r.subs.map(x=>`<li>${esc(x.item)}: <b>${esc(x.name)}</b>${x.size&&!/\d\s*(g|kg|ml|l|stk)\b/i.test(x.name)?" "+esc(x.size):""} · ${x.actual!=null?`${kr(x.actual)}, regnet som ${kr(x.price)} for ${esc(x.per)}`:kr(x.price)}</li>`).join("")}</ul></details>`:""}
-    </div>`).join("") + unlinkedNote +
+  const lineHTML = (r, it) => {
+    const st = r.lines[it.id];
+    const price = st ? kr(st.price * qtyN(it.qty)) : "";
+    let status, cls = "";
+    if (!st){ status = "Mangler – velg en vare her"; cls = "miss"; }
+    else if (st.alt) status = "Valgt: " + esc(st.alt.name);
+    else if (st.sub) status = "Lignende: " + esc(st.sub.name) + (st.sub.actual!=null ? ` (${kr(st.sub.actual)}, regnet om til ${esc(st.sub.per)})` : "");
+    else status = "Samme vare";
+    const btn = it.alts?.[r.code]
+      ? `<button type="button" class="linkbtn" data-altpick="${it.id}" data-store="${esc(r.code)}">Bytt</button> <button type="button" class="linkbtn" data-altclear="${it.id}" data-store="${esc(r.code)}">Nullstill</button>`
+      : (!st || st.sub ? `<button type="button" class="linkbtn" data-altpick="${it.id}" data-store="${esc(r.code)}">Velg</button>` : "");
+    return `<li class="${cls}"><span class="ln"><b>${esc(it.name)}</b><small>${status}</small></span><span class="lp">${price}</span>${btn?`<span class="lb">${btn}</span>`:""}</li>`;
+  };
+  body.innerHTML = rows.map(r=>{
+    const subs = Object.values(r.lines).filter(x=>x.sub).length, alts = Object.values(r.lines).filter(x=>x.alt).length, miss = total - r.have;
+    const info = r.have===total ? (r===bestFull?"Billigst for hele lista":"Har alle varene") : `Mangler pris på ${miss} av ${total}`;
+    const extra = [subs?`${subs} lignende`:"", alts?`${alts} valgt selv`:""].filter(Boolean).join(" · ");
+    return `<div class="store-row${r===bestFull?" best":""}">
+      <b>${esc(r.name)}</b><span class="sum">${r.have?kr(r.sum)+" kr":"–"}</span>
+      <small>${info}${extra?" · "+extra:""}</small>
+      <details data-chain="${esc(r.code)}"${openChain===r.code?" open":""}><summary>${miss?"Se varene og velg det som mangler ›":"Se varene ›"}</summary>
+        <ul class="lines">${linked.map(it=>lineHTML(r,it)).join("")}</ul>
+      </details>
+    </div>`;
+  }).join("") + unlinkedNote +
     (prices.partial?`<p class="note">Fant ikke lignende varer for alt på én gang. Trykk «Oppdater pris» igjen om litt, så fylles resten inn.</p>`:"") +
     `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.${$("similarToggle").checked?" Lignende vare betyr billigste vare i samme kategori og omtrent samme størrelse.":""}</p>`;
 }
+$("totalsBody").addEventListener("toggle", e=>{
+  const d = e.target.closest?.("details[data-chain]"); if (!d) return;
+  if (d.open) openChain = d.dataset.chain; else if (openChain===d.dataset.chain) openChain = null;
+}, true);
+$("totalsBody").addEventListener("click", e=>{
+  const p = e.target.closest("[data-altpick]");
+  if (p){
+    const it = S.items.find(i=>i.id===p.dataset.altpick); if (!it) return;
+    const code = p.dataset.store, name = S.chains?.[code] || code;
+    openPicker({ altFor:it.id, store:code, storeName:name, name:it.name, q: it.q || it.name, ean: it.alts?.[code]?.ean || "" });
+    return;
+  }
+  const c = e.target.closest("[data-altclear]");
+  if (c){
+    const id = c.dataset.altclear, code = c.dataset.store;
+    op({op:"alt_clear", id, store:code}, ()=>{ const it=S.items.find(i=>i.id===id); if(it?.alts) delete it.alts[code]; }).then(calc);
+  }
+});
 async function calc(){
   const open = (S.items||[]).filter(i=>!i.done && i.ean);
   if (!open.length){ prices = {byEan:{}}; renderTotals(); $("totalsBody").insertAdjacentHTML("afterbegin",'<p class="note">Velg produkt for minst én vare først.</p>'); return; }
   const btn = $("calcBtn"); btn.disabled = true; btn.textContent = "Henter priser…";
   try{
     const similar = $("similarToggle").checked;
-    const items = open.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q}));
+    const items = open.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q, alts:i.alts}));
     const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar, stores:chosenStores()})});
     prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i])), partial:!!r.partial};
     render();
@@ -652,8 +704,9 @@ let pickItem = null, searchT = null, searchSeq = 0;
 // pickItem er enten en vare på lista ({id,...}) eller en fast vare ({favKey,...})
 function openPicker(it){
   pickItem = it;
-  $("pickTitle").textContent = it.name;
-  $("pickHint").textContent = it.favKey ? "Velg produktet dere vil ha når dere skriver «"+it.name+"»." : "Velg varen du pleier å kjøpe. Appen husker valget neste gang.";
+  $("pickTitle").textContent = it.altFor ? `${it.name} hos ${it.storeName}` : it.name;
+  $("pickHint").textContent = it.altFor ? `Viser bare varer fra ${it.storeName}. Valget brukes i prisen for ${it.storeName} og huskes til neste gang.`
+    : it.favKey ? "Velg produktet dere vil ha når dere skriver «"+it.name+"»." : "Velg varen du pleier å kjøpe. Appen husker valget neste gang.";
   $("pickSearch").value = it.q || it.pname || it.name;
   $("pickUnlink").hidden = !it.ean;
   $("picker").hidden = false;
@@ -666,7 +719,7 @@ async function doSearch(){
   if (q.length < 3){ box.innerHTML = '<p class="note">Skriv minst tre bokstaver.</p>'; return; }
   box.innerHTML = '<p class="note">Søker…</p>';
   try{
-    const st = chosenStores();
+    const st = pickItem?.altFor ? [pickItem.store] : chosenStores();
     const r = await api("/api/search?q="+encodeURIComponent(q)+(st.length?"&stores="+encodeURIComponent(st.join(",")):""));
     if (seq !== searchSeq) return;
     if (!r.results.length){ box.innerHTML = `<p class="note">Ingen treff${chosenStores().length?" i butikkene dere har valgt":""}. Prøv et kortere eller annet ord.</p>`; return; }
@@ -687,6 +740,11 @@ $("pickResults").addEventListener("click", e=>{
   const hasSize = /\d\s*(g|kg|ml|l|cl|dl|stk)\b/i.test(p.name);
   const pname = [p.name, p.weight && !hasSize ? `${p.weight} ${p.unit==="piece"?"stk":p.unit}` : ""].filter(Boolean).join(" ").slice(0,120);
   const meta = {kcat:p.kcat||0, w:p.weight||0, wu:p.unit||"", q:$("pickSearch").value.trim(), img:p.image||""};
+  if (pickItem.altFor){
+    const id = pickItem.altFor, store = pickItem.store;
+    op({op:"alt_set", id, store, ean:p.ean, pname, img:p.image||""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){ it.alts = {...(it.alts||{}), [store]:{ean:p.ean, pname}}; } }).then(calc);
+    closePicker(); return;
+  }
   if (pickItem.favKey){
     const k = pickItem.favKey, name = pickItem.name;
     op({op:"fav_set", key:k, name, ean:p.ean, pname, ...meta}, ()=>{ S.often[k] = {...(S.often[k]||{name,count:0}), name, fast:true, ean:p.ean, pname, ...meta}; });
@@ -697,6 +755,7 @@ $("pickResults").addEventListener("click", e=>{
   prices = null; closePicker();
 });
 $("pickUnlink").addEventListener("click", ()=>{
+  if (pickItem.altFor){ const id=pickItem.altFor, store=pickItem.store; op({op:"alt_clear", id, store}, null).then(calc); closePicker(); return; }
   if (pickItem.favKey){ const k=pickItem.favKey; op({op:"fav_set", key:k, name:pickItem.name, ean:""}, ()=>{ if(S.often[k]){S.often[k].ean="";S.often[k].pname="";} }); }
   else { const id=pickItem.id; op({op:"link", id, ean:""}, ()=>{ const it=S.items.find(i=>i.id===id); if(it){it.ean="";it.pname="";} }); }
   closePicker();

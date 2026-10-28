@@ -74,7 +74,9 @@ function dbHeaders(extra: Record<string, string> = {}) {
 type Saved = { name: string; ts: number; items: Omit<Item, "id" | "done" | "ts">[] };
 type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved>; current?: { id: string; name: string } | null };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
-type Meta = { kcat?: number; w?: number; wu?: string; q?: string; img?: string };
+// alts: produkt dere har valgt selv i en bestemt kjede, kjedekode → { ean, pname }
+type Alt = { ean: string; pname: string; img?: string };
+type Meta = { kcat?: number; w?: number; wu?: string; q?: string; img?: string; alts?: Record<string, Alt> };
 // Produktbilde fra Kassalapp (bare https-adresser)
 const imgOf = (v: unknown) => (/^https:\/\//.test(String(v || "")) ? String(v).slice(0, 500) : undefined);
 type Item = { id: string; name: string; qty: string; cat: string; ean: string; pname: string; done: boolean; ts: number } & Meta;
@@ -143,7 +145,7 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       if (dup) { if (o.qty) dup.qty = clean(o.qty, 20); return; }
       if (s.items.length >= 200) return false;
       const cat = known?.cat || clean(o.cat, 20) || "annet";
-      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, img: known?.img, done: false, ts: Date.now() });
+      s.items.push({ id: crypto.randomUUID().slice(0, 12), name, qty: clean(o.qty, 20), cat, ean: known?.ean || "", pname: known?.pname || "", kcat: known?.kcat, w: known?.w, wu: known?.wu, q: known?.q, img: known?.img, alts: known?.alts, done: false, ts: Date.now() });
       s.often[fk] = { ...(known || {}), name: fk === k ? name : known!.name, cat, count: (known?.count || 0) + 1, last: Date.now() };
       const keys = Object.keys(s.often);
       if (keys.length > 300) {
@@ -169,6 +171,22 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       Object.assign(it, meta);
       const k = key(it.name);
       s.often[k] = { ...(s.often[k] || { name: it.name, cat: it.cat, count: 1, last: Date.now() }), ean: it.ean, pname: it.pname, ...meta };
+      return;
+    }
+    case "alt_set":
+    case "alt_clear": {
+      // Eget valg av vare i én kjede, f.eks. Rema sin appelsinjuice når Rema ikke har Coop sin
+      const it = find(o.id); if (!it) return false;
+      const store = clean(o.store, 40); if (!store) return false;
+      const alts = { ...(it.alts || {}) };
+      if (o.op === "alt_set") {
+        const ean = String(o.ean || "");
+        if (!/^\d{8,14}$/.test(ean)) return false;
+        alts[store] = { ean, pname: clean(o.pname, 120), img: imgOf(o.img) };
+      } else delete alts[store];
+      it.alts = alts;
+      const k = key(it.name);
+      if (s.often[k]) s.often[k] = { ...s.often[k], alts };
       return;
     }
     case "fav_set": {
@@ -325,6 +343,8 @@ async function search(url: URL) {
   const allowed = allowedFrom(url.searchParams.get("stores"));
   // Ikke slått sammen per strekkode, så vi ser hvilke kjeder som har varen
   const params = new URLSearchParams({ search: q, size: "100", exclude_without_ean: "1" });
+  // Søk i én bestemt kjede (når dere velger vare for en butikk)
+  if (allowed && allowed.size === 1) params.set("store", [...allowed][0]);
   const res = await kassal("/products?" + params);
   if (res.error) return json({ error: res.error }, res.status);
   const byEan = new Map<string, Any>();
@@ -350,7 +370,7 @@ async function search(url: URL) {
     if (ok && price != null && (e.price == null || price < e.price)) e.price = price;
   }
   await recordChains(seen);
-  const results = [...byEan.values()].filter((e) => e.stores.length).slice(0, 25);
+  const results = [...byEan.values()].filter((e) => e.stores.length).slice(0, 40);
   return json({ results });
 }
 
@@ -383,7 +403,7 @@ async function cachePut(rows: { key: string; data: unknown; hours: number }[]) {
 }
 
 // ---------- Priser ----------
-type Store = { code: string; name: string; price: number; checked?: string; sub?: { name: string; size: string; actual?: number; per?: string } };
+type Store = { code: string; name: string; price: number; checked?: string; sub?: { name: string; size: string; actual?: number; per?: string }; alt?: { name: string } };
 type Want = { ean: string; name?: string; q?: string } & Meta;
 
 function storeOf(x: Any): Store | null {
@@ -413,40 +433,52 @@ async function lookupEan(ean: string): Promise<{ name: string; stores: Store[]; 
   };
 }
 
-// Billigste lignende vare i én kjede: samme kategori, omtrent samme størrelse
+// Billigste lignende vare i én kjede: samme kategori, omtrent samme størrelse.
+// Prøver kategori, så søkeordet dere brukte, så varens navn («Kaffe»). Finnes ingenting i samme
+// størrelse, godtas større avvik, og prisen regnes om etter kilo-/literpris.
 async function findSimilar(chain: Store, want: Want): Promise<Store | null | "limit"> {
   const target = normW(want.w, want.wu);
   const tries: URLSearchParams[] = [];
   if (want.kcat) tries.push(new URLSearchParams({ store: chain.code, category_id: String(want.kcat), size: "60" }));
-  const term = (want.q || want.name || "").trim();
-  if (term.length >= 3) tries.push(new URLSearchParams({ store: chain.code, search: term, size: "40" }));
+  const terms = [...new Set([want.q, want.name].map((t) => String(t || "").trim()).filter((t) => t.length >= 3).map((t) => t.toLowerCase()))];
+  for (const t of terms) tries.push(new URLSearchParams({ store: chain.code, search: t, size: "60" }));
 
+  const pools: Any[] = [];
   for (const params of tries) {
     const res = await kassal("/products?" + params);
     if (res.error === "for_mange_kall") return "limit";
     if (res.error) continue;
     const cands = (res.body.data || [])
       .map((p: Any) => ({ p, price: num(p.current_price), unit: unitNum(p), w: normW(p.weight, p.weight_unit) }))
-      .filter((c: Any) => c.price != null && storeInfo(c.p.store).code === chain.code)
-      .filter((c: Any) => {
-        if (!target) return true;
-        if (!c.w || c.w.u !== target.u) return false;
-        const r = c.w.v / target.v;
-        return r >= 0.65 && r <= 1.5; // ±35 % størrelse
-      });
-    if (!cands.length) continue;
-    // Billigst per kilo/liter når vi har det, ellers billigst
-    cands.sort((a: Any, b: Any) => (a.unit ?? a.price) - (b.unit ?? b.price));
-    const c = cands[0];
-    // Regn om til samme størrelse som det valgte produktet, så totalsummene kan sammenlignes
-    const scaled = target && c.w && Math.abs(c.w.v / target.v - 1) > 0.02;
-    const price = scaled ? Math.round(c.price * (target!.v / c.w.v) * 100) / 100 : c.price;
-    return {
-      code: chain.code, name: chain.name, price,
-      sub: { name: c.p.name, size: sizeLabel(c.p.weight, c.p.weight_unit), ...(scaled ? { actual: c.price, per: sizeLabel(want.w, want.wu) } : {}) },
-    };
+      .filter((c: Any) => c.price != null && storeInfo(c.p.store).code === chain.code);
+    pools.push(...cands);
+    const pick = choose(cands, target, 0.65, 1.5);
+    if (pick) return asStore(chain, pick, target, want);
   }
-  return null;
+  // Ingen i samme størrelse: godta større avvik (40 %–250 %)
+  const loose = choose(pools, target, 0.4, 2.5);
+  return loose ? asStore(chain, loose, target, want) : null;
+}
+function choose(cands: Any[], target: { v: number; u: string } | null, lo: number, hi: number): Any | null {
+  const ok = cands.filter((c: Any) => {
+    if (!target) return true;
+    if (!c.w || c.w.u !== target.u) return false;
+    const r = c.w.v / target.v;
+    return r >= lo && r <= hi;
+  });
+  if (!ok.length) return null;
+  // Billigst per kilo/liter når vi har det, ellers billigst
+  ok.sort((a: Any, b: Any) => (a.unit ?? a.price) - (b.unit ?? b.price));
+  return ok[0];
+}
+function asStore(chain: Store, c: Any, target: { v: number; u: string } | null, want: Want): Store {
+  // Regn om til samme størrelse som det valgte produktet, så totalsummene kan sammenlignes
+  const scaled = target && c.w && Math.abs(c.w.v / target.v - 1) > 0.02;
+  const price = scaled ? Math.round(c.price * (target!.v / c.w.v) * 100) / 100 : c.price;
+  return {
+    code: chain.code, name: chain.name, price,
+    sub: { name: c.p.name, size: sizeLabel(c.p.weight, c.p.weight_unit), ...(scaled ? { actual: c.price, per: sizeLabel(want.w, want.wu) } : {}) },
+  };
 }
 
 let loggedShape = false;
@@ -458,9 +490,12 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
   const uniq = [...new Map(wants.map((w) => [String(w.ean), { ...w, ean: String(w.ean) }])).values()];
   if (!uniq.length) return json({ items: [] });
   const byEan = new Map<string, { ean: string; name: string; stores: Store[] }>();
+  // Varer dere har valgt selv i en bestemt kjede
+  const altEans = [...new Set(uniq.flatMap((w) => Object.values(w.alts || {}).map((a) => String(a?.ean || ""))).filter((e) => /^\d{8,14}$/.test(e)))];
+  const allEans = [...new Set([...uniq.map((w) => w.ean), ...altEans])].slice(0, 100);
 
   // 1) Eksakte priser i ett samlekall
-  const res = await kassal("/products/prices-bulk", { method: "POST", body: JSON.stringify({ eans: uniq.map((w) => w.ean), days: 1 }) });
+  const res = await kassal("/products/prices-bulk", { method: "POST", body: JSON.stringify({ eans: allEans, days: 1 }) });
   if (res.error === "for_mange_kall") return json({ error: res.error }, 429);
   if (!res.error) {
     if (!loggedShape) { loggedShape = true; console.log("prices-bulk form:", JSON.stringify(res.body).slice(0, 400)); }
@@ -473,7 +508,10 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
     }
   }
   // 2) Det samlesvaret ikke dekket, og metadata vi mangler: per strekkode (mellomlagret)
-  const needLookup = uniq.filter((w) => !byEan.has(w.ean) || (body.similar && !w.kcat && !w.w));
+  const needLookup: Want[] = [
+    ...uniq.filter((w) => !byEan.has(w.ean) || (body.similar && !w.kcat && !w.w)),
+    ...altEans.filter((e) => !byEan.has(e)).map((e) => ({ ean: e })),
+  ];
   const cached = await cacheGet(needLookup.map((w) => "ean:" + w.ean));
   const toCache: { key: string; data: unknown; hours: number }[] = [];
   for (let i = 0; i < needLookup.length; i += 5) {
@@ -484,6 +522,16 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
       if (!w.kcat) w.kcat = r.meta?.kcat;
       if (!w.w) { w.w = r.meta?.w; w.wu = r.meta?.wu; }
     }));
+  }
+
+  // Eget valg i en kjede går foran både eksakt pris og lignende vare
+  for (const w of uniq) for (const [code, a] of Object.entries(w.alts || {})) {
+    const st = byEan.get(String(a?.ean))?.stores.find((x) => x.code === code);
+    if (!st) continue;
+    const entry = byEan.get(w.ean) || { ean: w.ean, name: w.name || "", stores: [] };
+    entry.stores = entry.stores.filter((x) => x.code !== code);
+    entry.stores.push({ ...st, alt: { name: a.pname || "" } });
+    byEan.set(w.ean, entry);
   }
 
   // Husk alle kjeder vi så, og fjern dem som ikke er valgt i innstillingene
@@ -516,7 +564,7 @@ async function prices(body: { eans?: unknown[]; items?: Want[]; similar?: boolea
     const jobs: { w: Want; chain: Store; key: string }[] = [];
     for (const w of uniq) {
       const have = new Set((byEan.get(w.ean)?.stores || []).map((s) => s.code));
-      for (const chain of chains) if (!have.has(chain.code)) jobs.push({ w, chain, key: `sub:${w.ean}:${chain.code}:${w.kcat || ""}:${w.w || ""}` });
+      for (const chain of chains) if (!have.has(chain.code)) jobs.push({ w, chain, key: `sub2:${w.ean}:${chain.code}:${w.kcat || ""}:${w.w || ""}` });
     }
     const subCache = await cacheGet(jobs.map((j) => j.key));
     const MAX_CALLS = 30;

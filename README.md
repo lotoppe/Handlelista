@@ -32,6 +32,7 @@ Bruk gjerne et nytt prosjekt, så holdes handlelista adskilt fra bryllupssiden (
 - Trykk **velg** på en vare og plukk produktet dere kjøper. Valget huskes til neste gang.
 - Trykk **Hva koster lista?** for totalpris per kjede. Antall (`2`, `3 stk`) ganges inn; vekt og volum teller som én.
 - Har ikke en kjede akkurat produktet dere valgte, bruker appen den billigste varen i samme kategori og omtrent samme størrelse (±35 %), regnet om til samme størrelse. Trykk «lignende varer» under kjeden for å se hva den valgte. Kan slås av med bryteren.
+- **Velg selv per butikk:** trykk «Se varene» under en butikk i kvitteringen. Der ser dere hva som er samme vare, lignende eller mangler, og kan trykke **Velg** for å plukke blant butikkens egne varer. Valget huskes.
 - **Meny** (øverst til høyre): ny tom liste, lagre lista, lagrede lister, faste varer og butikker.
 - **Lagre lista:** knappen nederst spør bare om et navn («Taco-fredag»). Under **Meny → Lagrede lister** åpner dere en lagret liste (bytter ut den som er åpen) eller legger varene til med «+ Legg til». Har den åpne lista endringer som ikke er lagret, spør appen om dere vil lagre først.
 - **Meny → Del lista:** sender lenken via delingsmenyen på mobilen (eller kopierer den). «Del med kode» logger mottakeren rett inn. Åpne lenken i Safari og velg Del → *Legg til på Hjem-skjerm*, så får appen sitt eget ikon.
