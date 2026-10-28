@@ -741,6 +741,9 @@ function renderSettings(){
   }
 }
 $("openMenu").addEventListener("click", ()=>openSettings("menu"));
+$("setClose").addEventListener("click", closeSettings);
+$("settings").addEventListener("click", e=>{ if (e.target.id==="settings") closeSettings(); });
+document.addEventListener("keydown", e=>{ if (e.key==="Escape" && !$("settings").hidden && !document.querySelector(".dlg-scrim")) closeSettings(); });
 $("setBack").addEventListener("click", ()=>{ setTab="menu"; renderSettings(); });
 $("saveListBtn").addEventListener("click", ()=>saveDialog());
 $("paneMenu").addEventListener("click", async e=>{
