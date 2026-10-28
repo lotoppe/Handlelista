@@ -228,6 +228,14 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
 .fav .thumb img{width:38px;height:38px}
 .fav input.alias{font:400 .85rem var(--ui);color:var(--ink);background:transparent;border:0;border-bottom:1px dashed #cbbfa3;padding:5px 2px;width:100%}
 .smallbtn{border:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:255px 15px 225px 15px/15px 225px 15px 255px;padding:4px 10px 5px;font-family:var(--hand);font-size:1.1rem;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
+.saved{border-bottom:1.5px solid var(--rule);padding:10px 0;display:flex;flex-direction:column;gap:6px}
+.saved-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.saved-top .nm{flex:1;min-width:8rem}
+.saved-top .nm b{display:block;font-family:var(--hand);font-size:1.6rem;font-weight:700;line-height:1;color:var(--ink);overflow-wrap:anywhere}
+.saved-top .nm small{display:block;font-size:.75rem;color:var(--pencil)}
+.saved p{margin:0;font-family:var(--hand);font-size:1.15rem;color:var(--pencil);line-height:1.15}
+.smallbtn.warn{border-color:var(--red);color:var(--red)}
+.head-btns{display:flex;gap:12px}
 .storelist{display:flex;flex-direction:column}
 .storelist label{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1.5px solid var(--rule);cursor:pointer;font-family:var(--hand);font-size:1.5rem;font-weight:600;color:var(--ink)}
 .storelist input{width:20px;height:20px;accent-color:var(--ink);margin:0}
@@ -258,7 +266,10 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
       <div class="status" id="status">Henter lista…</div>
     </div>
     <div class="head-right">
+      <div class="head-btns">
+      <button class="gear" id="openLists" type="button"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 3h10v14l-5-3.5L5 17z"/></svg>Lister</button>
       <button class="gear" id="openSettings" type="button" aria-label="Innstillinger"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>Oppsett</button>
+      </div>
       <div class="count" id="count"></div>
     </div>
   </header>
@@ -283,6 +294,7 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
   <div id="sections"></div>
 
   <div class="footer-acts" id="footerActs" hidden>
+    <button class="textbtn" id="saveListBtn" type="button">Lagre lista</button>
     <button class="textbtn" id="clearDone" type="button">Fjern avhukede</button>
     <button class="textbtn warn" id="clearAll" type="button">Tøm hele lista</button>
   </div>
@@ -303,8 +315,18 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
       <button class="textbtn" id="setClose" type="button">Ferdig</button>
     </div>
     <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tabLists" aria-selected="false">Lister</button>
       <button type="button" role="tab" id="tabFav" aria-selected="true">Faste varer</button>
       <button type="button" role="tab" id="tabStores" aria-selected="false">Butikker</button>
+    </div>
+    <div class="pane" id="paneLists" hidden>
+      <p class="note">Lagre det som står på lista nå, og hent det fram igjen en annen gang. Varene legges til på lista, ingenting blir slettet.</p>
+      <form class="row-form" id="saveForm" autocomplete="off">
+        <input id="saveName" type="text" placeholder="Navn, f.eks. «Taco-fredag»" aria-label="Navn på lista">
+        <button class="primary" type="submit">Lagre</button>
+      </form>
+      <p class="note" id="saveMsg" hidden></p>
+      <div id="savedList"></div>
     </div>
     <div class="pane" id="paneFav">
       <p class="note">Koble varene dere pleier å kjøpe til et bestemt produkt. Skriver dere navnet på lista, er produktet valgt med en gang.</p>
@@ -473,12 +495,17 @@ async function pull(){
     setStatus("Delt lista · oppdateres automatisk");
   }catch(e){ if (e.code!=="login") setStatus("Får ikke kontakt. Prøver igjen…", true); }
 }
-async function op(o, optimistic){
+// Endringer sendes én etter én, så flere varer skrevet med komma ikke krasjer med hverandre
+let opChain = Promise.resolve();
+function op(o, optimistic){
   busy++;
   if (optimistic){ optimistic(); render(); }
-  try{ S = await api("/api/op",{method:"POST",body:JSON.stringify(o)}); }
-  catch(e){ if (e.code!=="login") setStatus("Fikk ikke lagret. Sjekk nettet.", true); }
-  finally{ busy--; render(); }
+  opChain = opChain.then(async ()=>{
+    try{ S = await api("/api/op",{method:"POST",body:JSON.stringify(o)}); }
+    catch(e){ if (e.code!=="login") setStatus("Fikk ikke lagret. Sjekk nettet.", true); }
+    finally{ busy--; if (!busy) render(); }
+  });
+  return opChain;
 }
 
 // ---------- Render ----------
@@ -644,8 +671,10 @@ let setTab = "fav";
 function openSettings(tab){ if (tab) setTab = tab; $("settings").hidden = false; renderSettings(); }
 function closeSettings(){ $("settings").hidden = true; }
 function renderSettings(){
-  $("tabFav").setAttribute("aria-selected", setTab==="fav"); $("tabStores").setAttribute("aria-selected", setTab==="stores");
-  $("paneFav").hidden = setTab!=="fav"; $("paneStores").hidden = setTab!=="stores";
+  $("tabLists").setAttribute("aria-selected", setTab==="lists"); $("tabFav").setAttribute("aria-selected", setTab==="fav"); $("tabStores").setAttribute("aria-selected", setTab==="stores");
+  $("paneLists").hidden = setTab!=="lists"; $("paneFav").hidden = setTab!=="fav"; $("paneStores").hidden = setTab!=="stores";
+  $("setTitle").textContent = setTab==="lists" ? "Lagrede lister" : "Oppsett";
+  if (setTab==="lists") renderSaved();
   const often = S.often||{};
   // Ikke tegn om mens noen skriver i et felt
   const active = document.activeElement;
@@ -674,7 +703,51 @@ function renderSettings(){
     $("storesAll").hidden = !sel.size;
   }
 }
-$("openSettings").addEventListener("click", ()=>openSettings());
+$("openSettings").addEventListener("click", ()=>openSettings(setTab==="lists"?"fav":undefined));
+$("openLists").addEventListener("click", ()=>openSettings("lists"));
+$("tabLists").addEventListener("click", ()=>{ setTab="lists"; renderSettings(); });
+$("saveListBtn").addEventListener("click", ()=>{ openSettings("lists"); setTimeout(()=>$("saveName").focus(), 50); });
+
+// ---------- Lagrede lister ----------
+let armedDelete = null;
+function renderSaved(){
+  const open = (S.items||[]).filter(i=>!i.done);
+  $("saveForm").querySelector("button").disabled = !open.length;
+  $("saveName").placeholder = open.length ? `Navn på lista (${open.length} ${open.length===1?"vare":"varer"})` : "Lista er tom – legg til varer først";
+  const lists = Object.entries(S.saved||{}).sort((a,b)=>b[1].ts-a[1].ts);
+  const fmt = ts => new Date(ts).toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
+  $("savedList").innerHTML = lists.length ? lists.map(([id,l])=>`<div class="saved" data-saved="${esc(id)}">
+      <div class="saved-top">
+        <div class="nm"><b>${esc(l.name)}</b><small>${l.items.length} ${l.items.length===1?"vare":"varer"} · lagret ${fmt(l.ts)}</small></div>
+        <button class="smallbtn" type="button" data-savedact="load">Legg på lista</button>
+        <button class="smallbtn warn" type="button" data-savedact="del">${armedDelete===id?"Sikker?":"Slett"}</button>
+      </div>
+      <p>${esc(l.items.slice(0,8).map(i=>i.name).join(", "))}${l.items.length>8?" …":""}</p>
+    </div>`).join("")
+    : `<p class="note">Ingen lagrede lister ennå.</p>`;
+}
+function flashMsg(t){ const m=$("saveMsg"); m.textContent=t; m.hidden=false; clearTimeout(m._t); m._t=setTimeout(()=>{m.hidden=true;},2500); }
+$("saveForm").addEventListener("submit", e=>{
+  e.preventDefault();
+  const name = $("saveName").value.trim(); if (!name) { $("saveName").focus(); return; }
+  if (!(S.items||[]).some(i=>!i.done)) return;
+  const replaced = Object.values(S.saved||{}).some(l=>keyOf(l.name)===keyOf(name));
+  $("saveName").value = "";
+  op({op:"save_list", name}, null);
+  flashMsg(replaced ? `«${name}» er oppdatert.` : `«${name}» er lagret.`);
+});
+$("savedList").addEventListener("click", e=>{
+  const b = e.target.closest("[data-savedact]"); if (!b) return;
+  const id = b.closest("[data-saved]").dataset.saved, l = S.saved?.[id]; if (!l) return;
+  if (b.dataset.savedact==="load"){
+    op({op:"load_list", id}, null);
+    flashMsg(`Varene fra «${l.name}» er lagt på lista.`);
+  }
+  if (b.dataset.savedact==="del"){
+    if (armedDelete!==id){ armedDelete=id; renderSaved(); setTimeout(()=>{ if(armedDelete===id){armedDelete=null; renderSaved();} },3000); return; }
+    armedDelete=null; op({op:"delete_list", id}, ()=>{ delete S.saved[id]; });
+  }
+});
 $("setClose").addEventListener("click", closeSettings);
 $("settings").addEventListener("click", e=>{ if (e.target.id==="settings") closeSettings(); });
 $("tabFav").addEventListener("click", ()=>{ setTab="fav"; renderSettings(); });

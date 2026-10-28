@@ -32,6 +32,7 @@ Bruk gjerne et nytt prosjekt, så holdes handlelista adskilt fra bryllupssiden (
 - Trykk **velg** på en vare og plukk produktet dere kjøper. Valget huskes til neste gang.
 - Trykk **Hva koster lista?** for totalpris per kjede. Antall (`2`, `3 stk`) ganges inn; vekt og volum teller som én.
 - Har ikke en kjede akkurat produktet dere valgte, bruker appen den billigste varen i samme kategori og omtrent samme størrelse (±35 %), regnet om til samme størrelse. Trykk «lignende varer» under kjeden for å se hva den valgte. Kan slås av med bryteren.
+- **Lagre lista:** gi det som står på lista et navn («Taco-fredag»). Under **Lister** henter dere den fram igjen; varene legges til på lista uten å slette noe.
 - **Innstillinger → Faste varer:** koble f.eks. «Smør» til Olivero, og gi den gjerne andre navn («margarin»). Skriver dere navnet på lista, er produktet valgt automatisk. «+ Lista» legger varen rett på lista.
 - **Innstillinger → Butikker:** huk av kjedene dere handler i. Søk og totalpris viser bare disse. Valget er felles for alle som bruker lista.
 - Prisene er ordinære hyllepriser fra Kassalapp. Medlemspriser (Coop, Trumf) er ikke med.
