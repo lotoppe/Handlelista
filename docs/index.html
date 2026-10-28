@@ -136,6 +136,8 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
 .lines .lp{font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums}
 .lines .lb{grid-column:1/-1;display:flex;gap:12px}
 .lines li.miss .ln small{color:var(--red);font-weight:700}
+.lines li.avg .ln small{color:#8a5a00;font-style:italic}
+.lines li.avg .lp::after{content:" ~";color:#8a5a00}
 .linkbtn{border:0;background:none;padding:2px 0;font-family:var(--mono);font-size:.74rem;font-weight:700;color:var(--ink);text-decoration:underline;cursor:pointer}
 .toggle input{width:18px;height:18px;accent-color:var(--ink);margin:0;flex:none}
 
@@ -514,7 +516,7 @@ const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/
 // ---------- Automatisk oppdatering ----------
 // Bump APP_VERSION ved hver endring. Appen sjekker om en nyere versjon er publisert og laster den inn,
 // så Hjem-skjerm-appen på iPhone ikke blir hengende på en gammel kopi.
-const APP_VERSION = "2026-10-28-3";
+const APP_VERSION = "2026-10-28-4";
 async function checkForUpdate(){
   try{
     const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache:"no-store" });
@@ -654,6 +656,18 @@ function renderTotals(){
     }
   }
   const total = linked.length;
+  // Har en butikk ikke en vare (og ingenting er valgt), brukes snittprisen fra de andre butikkene,
+  // så totalsummene kan sammenlignes. Merkes «snittpris» i kvitteringen.
+  const all = Object.values(chains);
+  for (const it of linked){
+    const known = all.map(c=>c.lines[it.id]).filter(Boolean).map(st=>st.price);
+    if (!known.length) continue;
+    const avg = Math.round(known.reduce((a,b)=>a+b,0) / known.length * 100) / 100;
+    for (const c of all) if (!c.lines[it.id]){
+      c.lines[it.id] = { code:c.code, name:c.name, price:avg, avg:true, n:known.length };
+      c.sum += avg * qtyN(it.qty); c.have++; c.avgs = (c.avgs||0) + 1;
+    }
+  }
   const rows = Object.values(chains).sort((a,b)=>(b.have-a.have)||(a.sum-b.sum)).slice(0,10);
   if (!rows.length){ body.innerHTML = `<p class="note">Fant ingen priser for de valgte produktene.</p>${unlinkedNote}`; return; }
   const bestFull = rows.find(r=>r.have===total);
@@ -661,30 +675,31 @@ function renderTotals(){
     const st = r.lines[it.id];
     const price = st ? kr(st.price * qtyN(it.qty)) : "";
     let status, cls = "";
-    if (!st && it.alts?.[r.code]){ status = `Valgt: ${esc(it.alts[r.code].pname)} – fant ikke prisen. Velg på nytt eller prøv en annen vare.`; cls = "miss"; }
+    if (st?.avg){ status = `Finnes ikke her – snittpris fra ${st.n} ${st.n===1?"annen butikk":"andre butikker"}`; cls = "avg"; }
+    else if (!st && it.alts?.[r.code]){ status = `Valgt: ${esc(it.alts[r.code].pname)} – fant ikke prisen. Velg på nytt eller prøv en annen vare.`; cls = "miss"; }
     else if (!st){ status = "Mangler – velg en vare her"; cls = "miss"; }
     else if (st.alt) status = "Valgt: " + esc(st.alt.name) + (st.alt.old ? " (pris fra da den ble valgt)" : "");
     else if (st.sub) status = "Lignende: " + esc(st.sub.name) + (st.sub.actual!=null ? ` (${kr(st.sub.actual)}, regnet om til ${esc(st.sub.per)})` : "");
     else status = "Samme vare";
     const btn = it.alts?.[r.code]
       ? `<button type="button" class="linkbtn" data-altpick="${it.id}" data-store="${esc(r.code)}">Bytt</button> <button type="button" class="linkbtn" data-altclear="${it.id}" data-store="${esc(r.code)}">Nullstill</button>`
-      : (!st || st.sub ? `<button type="button" class="linkbtn" data-altpick="${it.id}" data-store="${esc(r.code)}">Velg</button>` : "");
+      : (!st || st.sub || st.avg ? `<button type="button" class="linkbtn" data-altpick="${it.id}" data-store="${esc(r.code)}">Velg</button>` : "");
     return `<li class="${cls}"><span class="ln"><b>${esc(it.name)}</b><small>${status}</small></span><span class="lp">${price}</span>${btn?`<span class="lb">${btn}</span>`:""}</li>`;
   };
   body.innerHTML = rows.map(r=>{
-    const subs = Object.values(r.lines).filter(x=>x.sub).length, alts = Object.values(r.lines).filter(x=>x.alt).length, miss = total - r.have;
+    const subs = Object.values(r.lines).filter(x=>x.sub).length, alts = Object.values(r.lines).filter(x=>x.alt).length, avgs = r.avgs||0, miss = total - r.have;
     const info = r.have===total ? (r===bestFull?"Billigst for hele lista":"Har alle varene") : `Mangler pris på ${miss} av ${total}`;
-    const extra = [subs?`${subs} lignende`:"", alts?`${alts} valgt selv`:""].filter(Boolean).join(" · ");
+    const extra = [subs?`${subs} lignende`:"", alts?`${alts} valgt selv`:"", avgs?`${avgs} snittpris`:""].filter(Boolean).join(" · ");
     return `<div class="store-row${r===bestFull?" best":""}">
       <b>${esc(r.name)}</b><span class="sum">${r.have?kr(r.sum)+" kr":"–"}</span>
       <small>${info}${extra?" · "+extra:""}</small>
-      <details data-chain="${esc(r.code)}"${openChain===r.code?" open":""}><summary>${miss?"Se varene og velg det som mangler ›":"Se varene ›"}</summary>
+      <details data-chain="${esc(r.code)}"${openChain===r.code?" open":""}><summary>${miss||avgs?"Se varene og velg det som mangler ›":"Se varene ›"}</summary>
         <ul class="lines">${linked.map(it=>lineHTML(r,it)).join("")}</ul>
       </details>
     </div>`;
   }).join("") + unlinkedNote +
     (prices.partial?`<p class="note">Fant ikke lignende varer for alt på én gang. Trykk «Oppdater pris» igjen om litt, så fylles resten inn.</p>`:"") +
-    `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.${$("similarToggle").checked?" Lignende vare betyr billigste vare i samme kategori og omtrent samme størrelse.":""}</p>`;
+    `<p class="note">Ordinære hyllepriser fra Kassalapp. Medlemspriser er ikke med.${$("similarToggle").checked?" Lignende vare betyr billigste vare i samme kategori og omtrent samme størrelse.":""} Varer en butikk ikke har, får snittprisen fra de andre (merket ~).</p>`;
 }
 $("totalsBody").addEventListener("toggle", e=>{
   const d = e.target.closest?.("details[data-chain]"); if (!d) return;
