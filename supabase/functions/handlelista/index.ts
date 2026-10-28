@@ -72,7 +72,7 @@ function dbHeaders(extra: Record<string, string> = {}) {
 // settings.stores: kjeder som skal være med (tom = alle). chains: kjeder appen har sett, kode → navn
 // saved: lagrede lister som kan hentes fram igjen, id → { name, items, ts }
 type Saved = { name: string; ts: number; items: Omit<Item, "id" | "done" | "ts">[] };
-type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved> };
+type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved>; current?: { id: string; name: string } | null };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
 type Meta = { kcat?: number; w?: number; wu?: string; q?: string; img?: string };
 // Produktbilde fra Kassalapp (bare https-adresser)
@@ -217,6 +217,7 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       const existing = Object.entries(s.saved).find(([, l]) => key(l.name) === key(name));
       const id = existing ? existing[0] : crypto.randomUUID().slice(0, 10);
       s.saved[id] = { name, ts: Date.now(), items: open.slice(0, 120).map(({ id: _i, done: _d, ts: _t, ...rest }) => rest) };
+      s.current = { id, name };
       const ids = Object.keys(s.saved);
       if (ids.length > 40) ids.sort((a, b) => s.saved![a].ts - s.saved![b].ts).slice(0, ids.length - 40).forEach((x) => delete s.saved![x]);
       return;
@@ -232,7 +233,16 @@ function apply(s: State, o: Record<string, unknown>): void | false {
       }
       return;
     }
-    case "delete_list": { if (s.saved) { s.saved = { ...s.saved }; delete s.saved[String(o.id)]; } return; }
+    case "open_list": {
+      // Bytter ut lista som er åpen med en lagret liste
+      const l = s.saved?.[String(o.id)];
+      if (!l) return false;
+      s.items = l.items.slice(0, 200).map((it) => ({ ...it, id: crypto.randomUUID().slice(0, 12), done: false, ts: Date.now() }));
+      s.current = { id: String(o.id), name: l.name };
+      return;
+    }
+    case "new_list": { s.items = []; s.current = null; return; }
+    case "delete_list": { if (s.saved) { s.saved = { ...s.saved }; delete s.saved[String(o.id)]; } if (s.current?.id === String(o.id)) s.current = null; return; }
     case "remove": { const ids = new Set((o.ids as string[]) || []); s.items = s.items.filter((i) => !ids.has(i.id)); return; }
     default: return false;
   }
