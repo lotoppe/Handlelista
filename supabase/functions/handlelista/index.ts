@@ -72,7 +72,9 @@ function dbHeaders(extra: Record<string, string> = {}) {
 // settings.stores: kjeder som skal være med (tom = alle). chains: kjeder appen har sett, kode → navn
 // saved: lagrede lister som kan hentes fram igjen, id → { name, items, ts }
 type Saved = { name: string; ts: number; items: Omit<Item, "id" | "done" | "ts">[] };
-type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved>; current?: { id: string; name: string } | null };
+type State = { v: number; items: Item[]; often: Record<string, Often>; settings?: { stores: string[] }; chains?: Record<string, string>; saved?: Record<string, Saved>; current?: { id: string; name: string } | null; trips?: Trip[] };
+// En fullført handletur: hva den kostet der dere handlet, og hva den ville kostet i den dyreste valgte butikken
+type Trip = { id: string; ts: number; store: string; storeName: string; spent: number; max: number; maxStore: string; saved: number; n: number };
 // kcat/w/wu/q beskriver det valgte produktet, så appen kan finne lignende varer i andre kjeder
 // alts: produkt dere har valgt selv i en bestemt kjede, kjedekode → { ean, pname }
 // price/pts: prisen som ble vist da varen ble valgt, brukes hvis Kassalapp ikke har dagens pris
@@ -263,6 +265,16 @@ function apply(s: State, o: Record<string, unknown>): void | false {
     }
     case "new_list": { s.items = []; s.current = null; return; }
     case "delete_list": { if (s.saved) { s.saved = { ...s.saved }; delete s.saved[String(o.id)]; } if (s.current?.id === String(o.id)) s.current = null; return; }
+    case "trip_add": {
+      const n2 = (v: unknown) => Math.max(0, Math.round(Number(v) * 100) / 100 || 0);
+      const store = clean(o.store, 40);
+      if (!store) return false;
+      const t: Trip = { id: crypto.randomUUID().slice(0, 10), ts: Date.now(), store, storeName: clean(o.storeName, 60) || store,
+        spent: n2(o.spent), max: n2(o.max), maxStore: clean(o.maxStore, 60), saved: n2(o.saved), n: Math.max(0, Math.floor(Number(o.n) || 0)) };
+      s.trips = [...(s.trips || []), t].slice(-500);
+      return;
+    }
+    case "trip_remove": { s.trips = (s.trips || []).filter((t) => t.id !== String(o.id)); return; }
     case "remove": { const ids = new Set((o.ids as string[]) || []); s.items = s.items.filter((i) => !ids.has(i.id)); return; }
     default: return false;
   }

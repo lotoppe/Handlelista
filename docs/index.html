@@ -243,6 +243,17 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
 .fav .thumb img{width:38px;height:38px}
 .fav input.alias{font:400 .85rem var(--ui);color:var(--ink);background:transparent;border:0;border-bottom:1px dashed #cbbfa3;padding:5px 2px;width:100%}
 .smallbtn{border:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:255px 15px 225px 15px/15px 225px 15px 255px;padding:4px 10px 5px;font-family:var(--hand);font-size:1.1rem;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1}
+.savings-total{background:var(--note);padding:16px 18px 14px;box-shadow:1px 3px 6px rgba(70,50,20,.2);transform:rotate(-1deg);display:flex;flex-direction:column;gap:2px;margin:4px 4px 6px}
+.savings-total small{font-family:var(--hand);font-size:1.3rem;color:var(--pencil);line-height:1}
+.savings-total b{font-family:var(--hand);font-size:3rem;font-weight:700;color:var(--ink);line-height:1}
+.savings-total span{font-size:.8rem;color:var(--pencil)}
+.trips{list-style:none;margin:0;padding:0}
+.trips li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1.5px solid var(--rule)}
+.trips .tn{flex:1;min-width:0}
+.trips .tn b{display:block;font-family:var(--hand);font-size:1.45rem;line-height:1;color:var(--ink)}
+.trips .tn small{display:block;font-size:.74rem;color:var(--pencil)}
+.trips .ts{font-family:var(--mono);font-weight:700;color:#2f6b3c;white-space:nowrap}
+.dlg .btns .smallbtn{font-size:1.3rem;padding:7px 14px 8px}
 .saved{border-bottom:1.5px solid var(--rule);padding:10px 0;display:flex;flex-direction:column;gap:6px}
 .saved-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .saved-top .nm{flex:1;min-width:8rem}
@@ -361,11 +372,13 @@ h1::after{content:"";display:block;height:6px;margin-top:2px;width:86%;
         <li><button type="button" data-go="new"><svg viewBox="0 0 32 32"><path d="M8 4h12l5 5v19H8z"/><path d="M20 4v5h5M16 13v9M11.5 17.5h9"/></svg><span><b>Ny tom liste</b><small>Start på en blank lapp</small></span></button></li>
         <li><button type="button" data-go="save"><svg viewBox="0 0 32 32"><path d="M7 5h15l4 4v18H7z"/><path d="M11 5v7h9V5M11 27v-8h11v8"/></svg><span><b>Lagre lista</b><small id="menuSaveSub">Gi lista et navn</small></span></button></li>
         <li><button type="button" data-go="share"><svg viewBox="0 0 32 32"><path d="M16 4v16M10 10l6-6 6 6"/><path d="M8 15H6v13h20V15h-2"/></svg><span><b>Del lista</b><small>Send lenken til Emma eller andre</small></span></button></li>
+        <li><button type="button" data-go="savings"><svg viewBox="0 0 32 32"><ellipse cx="16" cy="9" rx="10" ry="4"/><path d="M6 9v6c0 2.2 4.5 4 10 4s10-1.8 10-4V9M6 15v6c0 2.2 4.5 4 10 4s10-1.8 10-4v-6"/></svg><span><b>Penger spart</b><small id="menuSavingsSub">Hva dere har spart ved å sjekke først</small></span><span class="arrow">›</span></button></li>
         <li><button type="button" data-go="lists"><svg viewBox="0 0 32 32"><path d="M9 4h14v24l-7-5-7 5z"/></svg><span><b>Lagrede lister</b><small id="menuListsSub">Åpne en liste dere har lagret</small></span><span class="arrow">›</span></button></li>
         <li><button type="button" data-go="fav"><svg viewBox="0 0 32 32"><path d="M16 4l3.6 7.4 8 1.2-5.8 5.6 1.4 8L16 22.4 8.8 26.2l1.4-8L4.4 12.6l8-1.2z"/></svg><span><b>Faste varer</b><small>Varer som alltid får samme produkt</small></span><span class="arrow">›</span></button></li>
         <li><button type="button" data-go="stores"><svg viewBox="0 0 32 32"><path d="M4 12l3-7h18l3 7"/><path d="M4 12c0 2 2 3.5 4 3.5S12 14 12 12c0 2 2 3.5 4 3.5s4-1.5 4-3.5c0 2 2 3.5 4 3.5s4-1.5 4-3.5"/><path d="M6 15.5V27h20V15.5M13 27v-7h6v7"/></svg><span><b>Butikker</b><small id="menuStoresSub">Velg kjedene dere handler i</small></span><span class="arrow">›</span></button></li>
       </ul>
     </div>
+    <div class="pane" id="paneSavings" hidden><div id="savingsBody"></div></div>
     <div class="pane" id="paneLists" hidden>
       <p class="note">Åpne en lagret liste for å bruke den nå. «+ Legg til» putter varene inn i lista dere har åpen i stedet.</p>
       <div id="savedList"></div>
@@ -516,7 +529,7 @@ const qtyN = q => { const m = String(q||"").trim().match(/^(\d+)\s*(stk|pk|x)?$/
 // ---------- Automatisk oppdatering ----------
 // Bump APP_VERSION ved hver endring. Appen sjekker om en nyere versjon er publisert og laster den inn,
 // så Hjem-skjerm-appen på iPhone ikke blir hengende på en gammel kopi.
-const APP_VERSION = "2026-10-28-4";
+const APP_VERSION = "2026-10-29-1";
 async function checkForUpdate(){
   try{
     const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache:"no-store" });
@@ -633,29 +646,20 @@ function itemHTML(it){
 }
 
 // ---------- Totalpris ----------
-// Kjeden som er åpnet i kvitteringen (for å se og velge varer per butikk)
-let openChain = null;
-function renderTotals(){
-  const body = $("totalsBody");
-  const open = (S.items||[]).filter(i=>!i.done);
-  const unlinked = open.filter(i=>!i.ean);
-  const linked = open.filter(i=>i.ean);
-  const unlinkedNote = unlinked.length ? `<p class="note">${unlinked.length} ${unlinked.length===1?"vare":"varer"} uten valgt produkt er ikke med: ${unlinked.slice(0,4).map(i=>`<button type="button" data-pickid="${i.id}">${esc(i.name)}</button>`).join(", ")}${unlinked.length>4?" …":""}</p>` : "";
-  if (!prices){ body.innerHTML = unlinkedNote; return; }
-
-  // Én rad per kjede, med status for hver vare: funnet, eget valg, lignende eller mangler
+// Én rad per kjede, med status for hver vare: funnet, eget valg, lignende, snittpris.
+// Brukes både i kvitteringen og når en handletur registreres.
+function chainTotals(linked, byEan){
   const chains = {};
   const ensure = (code, name) => chains[code] ||= {code, name, sum:0, have:0, lines:{}};
   for (const c of chosenStores()) ensure(c, S.chains?.[c] || c);
   for (const it of linked){
-    const p = prices.byEan[it.ean]; if (!p) continue;
+    const p = byEan[it.ean]; if (!p) continue;
     for (const st of p.stores){
       const c = ensure(st.code, st.name);
       c.sum += st.price * qtyN(it.qty); c.have++;
       c.lines[it.id] = st;
     }
   }
-  const total = linked.length;
   // Har en butikk ikke en vare (og ingenting er valgt), brukes snittprisen fra de andre butikkene,
   // så totalsummene kan sammenlignes. Merkes «snittpris» i kvitteringen.
   const all = Object.values(chains);
@@ -668,6 +672,26 @@ function renderTotals(){
       c.sum += avg * qtyN(it.qty); c.have++; c.avgs = (c.avgs||0) + 1;
     }
   }
+  return chains;
+}
+async function fetchPrices(list){
+  const items = list.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q, alts:i.alts}));
+  const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar:$("similarToggle").checked, stores:chosenStores()})});
+  return { byEan:Object.fromEntries(r.items.map(i=>[i.ean,i])), partial:!!r.partial };
+}
+
+// Kjeden som er åpnet i kvitteringen (for å se og velge varer per butikk)
+let openChain = null;
+function renderTotals(){
+  const body = $("totalsBody");
+  const open = (S.items||[]).filter(i=>!i.done);
+  const unlinked = open.filter(i=>!i.ean);
+  const linked = open.filter(i=>i.ean);
+  const unlinkedNote = unlinked.length ? `<p class="note">${unlinked.length} ${unlinked.length===1?"vare":"varer"} uten valgt produkt er ikke med: ${unlinked.slice(0,4).map(i=>`<button type="button" data-pickid="${i.id}">${esc(i.name)}</button>`).join(", ")}${unlinked.length>4?" …":""}</p>` : "";
+  if (!prices){ body.innerHTML = unlinkedNote; return; }
+
+  const chains = chainTotals(linked, prices.byEan);
+  const total = linked.length;
   const rows = Object.values(chains).sort((a,b)=>(b.have-a.have)||(a.sum-b.sum)).slice(0,10);
   if (!rows.length){ body.innerHTML = `<p class="note">Fant ingen priser for de valgte produktene.</p>${unlinkedNote}`; return; }
   const bestFull = rows.find(r=>r.have===total);
@@ -724,10 +748,7 @@ async function calc(){
   if (!open.length){ prices = {byEan:{}}; renderTotals(); $("totalsBody").insertAdjacentHTML("afterbegin",'<p class="note">Velg produkt for minst én vare først.</p>'); return; }
   const btn = $("calcBtn"); btn.disabled = true; btn.textContent = "Henter priser…";
   try{
-    const similar = $("similarToggle").checked;
-    const items = open.map(i=>({ean:i.ean, name:i.name, kcat:i.kcat, w:i.w, wu:i.wu, q:i.q, alts:i.alts}));
-    const r = await api("/api/prices",{method:"POST",body:JSON.stringify({items, similar, stores:chosenStores()})});
-    prices = {byEan:Object.fromEntries(r.items.map(i=>[i.ean,i])), partial:!!r.partial};
+    prices = await fetchPrices(open);
     render();
   }catch(e){
     const msg = {mangler_nokkel:"Kassalapp-nøkkelen er ikke satt opp ennå.",for_mange_kall:"For mange søk akkurat nå. Vent et minutt.",ugyldig_nokkel:"Kassalapp avviste nøkkelen. Sjekk at den er riktig."}[e.code] || "Fikk ikke hentet priser. Prøv igjen.";
@@ -802,20 +823,23 @@ $("picker").addEventListener("click", e=>{ if (e.target.id==="picker") closePick
 // ---------- Innstillinger: faste varer og butikker ----------
 // Menyen: én side med valg, og hver del (lister, faste varer, butikker) som egen side med «‹ Meny»
 let setTab = "menu";
-const TITLES = { menu:"Meny", lists:"Lagrede lister", fav:"Faste varer", stores:"Butikker" };
+const TITLES = { menu:"Meny", lists:"Lagrede lister", fav:"Faste varer", stores:"Butikker", savings:"Penger spart" };
 function openSettings(tab){ setTab = tab || "menu"; $("settings").hidden = false; renderSettings(); }
 function closeSettings(){ $("settings").hidden = true; }
 function renderSettings(){
-  for (const t of ["menu","lists","fav","stores"]) $("pane"+t[0].toUpperCase()+t.slice(1)).hidden = setTab!==t;
+  for (const t of ["menu","lists","fav","stores","savings"]) $("pane"+t[0].toUpperCase()+t.slice(1)).hidden = setTab!==t;
   $("setTitle").textContent = TITLES[setTab];
   $("setBack").hidden = setTab==="menu";
   if (setTab==="menu"){
     const n = Object.keys(S.saved||{}).length, st = chosenStores();
     $("menuListsSub").textContent = n ? `${n} ${n===1?"liste":"lister"} lagret` : "Ingen lagret ennå";
     $("menuSaveSub").textContent = S.current ? `Åpen nå: «${S.current.name}»` : "Gi lista et navn";
+    const sp = (S.trips||[]).reduce((a,t)=>a+t.saved,0);
+    $("menuSavingsSub").textContent = (S.trips||[]).length ? `${kr(sp)} kr spart på ${(S.trips||[]).length} ${(S.trips||[]).length===1?"tur":"turer"}` : "Hva dere har spart ved å sjekke først";
     $("menuStoresSub").textContent = st.length ? st.map(c=>S.chains?.[c]||c).join(", ") : "Alle kjeder";
   }
   if (setTab==="lists") renderSaved();
+  if (setTab==="savings") renderSavings();
   const often = S.often||{};
   // Ikke tegn om mens noen skriver i et felt
   const active = document.activeElement;
@@ -927,6 +951,63 @@ $("savedList").addEventListener("click", async e=>{
   }
 });
 
+// ---------- Penger spart ----------
+// Når siste vare krysses av: spør hvilken butikk dere handlet i, og lagre hva dere sparte
+// sammenlignet med den dyreste av de valgte butikkene.
+let tripAsked = "";
+async function tripDone(){
+  const items = (S.items||[]);
+  if (!items.length || items.some(i=>!i.done)) return;
+  const sig = items.map(i=>i.id).sort().join(",");
+  if (sig === tripAsked) return;            // ikke spør to ganger for samme handletur
+  tripAsked = sig;
+  const linked = items.filter(i=>i.ean);
+  const stores = chosenStores().length ? chosenStores() : Object.keys(S.chains||{}).slice(0,6);
+  if (!linked.length || !stores.length) return;
+  const r = await dialog({ title:"Alt er handlet! 🎉", text:"Hvilken butikk er du i? Da regner appen ut hvor mye du sparte.",
+    buttons:[...stores.map(c=>({label:S.chains?.[c]||c, value:c, kind:"smallbtn"})), {label:"Hopp over", value:"skip", kind:"textbtn"}] });
+  if (!r.value || r.value==="skip" || r.value==="cancel") return;
+  let byEan;
+  try{ byEan = (await fetchPrices(linked)).byEan; }
+  catch(e){ toast("Fikk ikke hentet priser – handleturen ble ikke lagret"); return; }
+  const chains = chainTotals(linked, byEan);
+  const here = chains[r.value];
+  // Bare butikker med pris på alle varene (inkl. snittpris) kan sammenlignes
+  const full = Object.values(chains).filter(c=>c.have===linked.length && stores.includes(c.code));
+  if (!here || here.have < linked.length || !full.length){ toast("Fant ikke nok priser til å regne ut sparingen"); return; }
+  const max = full.reduce((a,b)=>b.sum>a.sum?b:a);
+  const saved = Math.max(0, max.sum - here.sum);
+  await op({op:"trip_add", store:here.code, storeName:here.name, spent:here.sum, max:max.sum, maxStore:max.name, saved, n:linked.length}, null);
+  const total = (S.trips||[]).reduce((a,t)=>a+t.saved,0);
+  await dialog({ title: saved>0.5 ? `Du sparte ${kr(saved)} kr` : "Registrert",
+    text: saved>0.5 ? `Lista kostet ${kr(here.sum)} kr på ${here.name}, mot ${kr(max.sum)} kr på ${max.name}. Totalt spart så langt: ${kr(total)} kr.`
+                    : `${here.name} var den dyreste av butikkene i dag, så ingen sparing denne gangen. Totalt spart så langt: ${kr(total)} kr.`,
+    buttons:[{label:"Fint!", value:"ok", kind:"primary"}] });
+}
+function renderSavings(){
+  const trips = [...(S.trips||[])].sort((a,b)=>b.ts-a.ts);
+  const total = trips.reduce((a,t)=>a+t.saved,0), spent = trips.reduce((a,t)=>a+t.spent,0);
+  const fmt = ts => new Date(ts).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"});
+  const perStore = {}; for (const t of trips) perStore[t.storeName] = (perStore[t.storeName]||0) + 1;
+  $("savingsBody").innerHTML = `
+    <div class="savings-total"><small>Totalt spart</small><b>${kr(total)} kr</b>
+      <span>${trips.length} ${trips.length===1?"handletur":"handleturer"}${trips.length?` · handlet for ${kr(spent)} kr`:""}</span></div>
+    ${Object.keys(perStore).length?`<p class="note">Oftest handlet: ${esc(Object.entries(perStore).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`${n} (${c})`).join(", "))}</p>`:""}
+    <p class="note">Sparing regnes mot den dyreste av butikkene dere har valgt, for akkurat de varene som sto på lista. Kryss av alt på lista, så spør appen hvor dere handlet.</p>
+    ${trips.length?`<ul class="trips">${trips.map(t=>`<li data-trip="${esc(t.id)}">
+        <span class="tn"><b>${esc(t.storeName)}</b><small>${fmt(t.ts)} · ${t.n} ${t.n===1?"vare":"varer"} · ${kr(t.spent)} kr${t.maxStore?` (mot ${kr(t.max)} kr på ${esc(t.maxStore)})`:""}</small></span>
+        <span class="ts">+${kr(t.saved)}</span>
+        <button type="button" class="icon" data-tripdel="${esc(t.id)}" aria-label="Slett handleturen">${ICON_X}</button>
+      </li>`).join("")}</ul>`:`<p class="note">Ingen handleturer registrert ennå.</p>`}`;
+}
+let armedTrip = null;
+$("savingsBody").addEventListener("click", e=>{
+  const b = e.target.closest("[data-tripdel]"); if (!b) return;
+  const id = b.dataset.tripdel;
+  if (armedTrip!==id){ armedTrip=id; toast("Trykk på krysset igjen for å slette turen"); setTimeout(()=>{ if(armedTrip===id) armedTrip=null; },3000); return; }
+  armedTrip=null; op({op:"trip_remove", id}, ()=>{ S.trips=(S.trips||[]).filter(t=>t.id!==id); });
+});
+
 // ---------- Del lista ----------
 async function shareApp(){
   const r = await dialog({ title:"Del Handlelista",
@@ -1025,7 +1106,11 @@ document.addEventListener("click", e=>{
   const act = e.target.closest("[data-act]"); if (!act || act.tagName==="SELECT" || act.tagName==="INPUT") return;
   const it = S.items.find(i=>i.id===act.closest("[data-id]")?.dataset.id); if (!it || it.id.startsWith("tmp")) return;
   const a = act.dataset.act;
-  if (a==="toggle") op({op:"toggle", id:it.id}, ()=>{ it.done=!it.done; });
+  if (a==="toggle"){
+    const wasLast = !it.done && (S.items||[]).filter(i=>!i.done).length === 1;
+    op({op:"toggle", id:it.id}, ()=>{ it.done=!it.done; });
+    if (wasLast) setTimeout(tripDone, 350);
+  }
   if (a==="del") op({op:"remove", ids:[it.id]}, ()=>{ S.items=S.items.filter(i=>i.id!==it.id); });
   if (a==="edit"){ editing = editing===it.id?null:it.id; render(); }
   if (a==="pick") openPicker(it);
